@@ -6,6 +6,8 @@ const translations = {
 };
 Object.assign(translations.en, { trimTitle:"Preview & trim", trimHelp:"Optional: loading waveforms enables shared trimming and individual track selection. Without it, all tracks convert normally.", loadWaveforms:"Load waveforms", trimStart:"Start (seconds)", trimEnd:"End (seconds)", loadingWaveforms:"Generating waveform previews…", waveformsReady:"Waveforms ready. Drag the sliders or enter precise times.", chooseSourceFirst:"Choose a source folder first.", selectAll:"Select all", selectNone:"Select none" });
 Object.assign(translations.zh, { trimTitle:"波形预览与裁剪", trimHelp:"可选步骤：加载波形后才可统一裁剪并逐轨选择；不加载也会正常转换全部轨道。", loadWaveforms:"加载波形", trimStart:"开始时间（秒）", trimEnd:"结束时间（秒）", loadingWaveforms:"正在生成波形预览…", waveformsReady:"波形已就绪。拖动滑块或输入精确时间。", chooseSourceFirst:"请先选择歌曲文件夹。", selectAll:"全选", selectNone:"全不选" });
+Object.assign(translations.en, { speedMode:"Processing speed", speedConservative:"Conservative — 1 track at a time", speedBalanced:"Balanced — 2 tracks at a time (recommended)", speedFast:"Fast — 4 tracks at a time", speedHelp:"More tracks can finish one song sooner, but use more CPU and disk. This does not combine separate web jobs." });
+Object.assign(translations.zh, { speedMode:"处理速度", speedConservative:"保守 — 一次处理 1 条轨道", speedBalanced:"平衡 — 一次处理 2 条轨道（推荐）", speedFast:"快速 — 一次处理 4 条轨道", speedHelp:"更高并发可让同一首歌更快完成，但会占用更多 CPU 和磁盘；不会合并不同网页任务。" });
 let language = localStorage.getItem("language") || (navigator.language.startsWith("zh") ? "zh" : "en");
 const t = (key) => translations[language][key] || key;
 
@@ -23,6 +25,10 @@ async function api(path, options = {}) {
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || "请求失败");
   return data;
+}
+
+function sendHeartbeat() {
+  api("/api/heartbeat", { method:"POST", body:"{}" }).catch(() => {});
 }
 
 async function refreshStatus() {
@@ -89,6 +95,8 @@ function watch(job) {
   $("#job-panel").classList.remove("hidden");
   $("#job-title").textContent = t("processing");
   $("#job-state").textContent = t("running");
+  $("#job-progress-bar").style.width = "0%";
+  $("#job-progress-text").textContent = "0%";
   $("#job-log").textContent = "";
   $("#output-path").textContent = "";
   $("#open-output").classList.add("hidden");
@@ -96,6 +104,11 @@ function watch(job) {
     const data = await api(`/api/job/${job}`);
     $("#job-log").textContent = data.log || "";
     $("#job-log").scrollTop = $("#job-log").scrollHeight;
+    // Static files can refresh while an older local Python server is still running.
+    // Treat a completed legacy job as 100% instead of misleadingly showing 0%.
+    const progress = data.status === "done" ? 100 : Number(data.progress || 0);
+    $("#job-progress-bar").style.width = `${progress}%`;
+    $("#job-progress-text").textContent = data.progressLabel ? `${progress}% · ${data.progressLabel}` : `${progress}%`;
     if (data.status !== "running") {
       clearInterval(poller);
       const success = data.status === "done";
@@ -159,4 +172,7 @@ $("#uninstall-button").addEventListener("click", async () => {
 
 $("#language-select").addEventListener("change", (event) => { language = event.target.value; localStorage.setItem("language", language); applyLanguage(); });
 applyLanguage();
+sendHeartbeat();
+const heartbeatTimer = setInterval(sendHeartbeat, 5000);
+window.addEventListener("pagehide", () => clearInterval(heartbeatTimer));
 refreshStatus().catch((error) => { $("#dependency-status").textContent = `${t("unable")}${error.message}`; });

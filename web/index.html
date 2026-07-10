@@ -9,7 +9,7 @@
   <body>
     <main>
       <header>
-        <div class="topbar"><p class="eyebrow">MACOS · LOCAL ONLY</p><label class="language"><span data-i18n="language">Language</span><select id="language-select" aria-label="Language"><option value="en">English</option><option value="zh">中文</option></select></label></div>
+        <div class="topbar"><p class="eyebrow">MACOS · LOCAL ONLY</p><label class="language"><span class="language-icon" aria-hidden="true">🌐</span><span data-i18n="language">Language</span><select id="language-select" aria-label="Language"><option value="en">English</option><option value="zh">中文</option></select></label></div>
         <h1 data-i18n="appName">Multitrack WAV Exporter</h1>
         <p class="lede" data-i18n="lede">Batch-export aligned 32-bit float WAV files as safe, shareable MP3s.</p>
       </header>
@@ -87,6 +87,15 @@
               <option value="-90" data-i18n="onlyDigital">-90 dBFS (only digital silence)</option><option value="-60">-60 dBFS</option><option value="-50">-50 dBFS</option><option value="-40" selected data-i18n="recommendedThreshold">-40 dBFS (recommended)</option><option value="-30">-30 dBFS</option>
             </select>
           </label>
+          <label class="speed-field">
+            <span data-i18n="speedMode">Processing speed</span>
+            <select name="workers">
+              <option value="1" data-i18n="speedConservative">Conservative — 1 track at a time</option>
+              <option value="2" selected data-i18n="speedBalanced">Balanced — 2 tracks at a time (recommended)</option>
+              <option value="4" data-i18n="speedFast">Fast — 4 tracks at a time</option>
+            </select>
+            <small data-i18n="speedHelp">More tracks can finish one song sooner, but use more CPU and disk. This does not combine separate web jobs.</small>
+          </label>
         </div>
         <p class="notice" data-i18n="notice">Every mode checks decoded MP3 peaks. When a peak exceeds the ceiling, it re-encodes from the original WAV at a lower level to avoid clipping.</p>
         <label class="checkbox"><input type="checkbox" name="packageZip" checked /> <span data-i18n="zip">Also create a ZIP share package (AirDrop, cloud drive, or bandmates)</span></label>
@@ -95,6 +104,7 @@
 
       <section id="job-panel" class="card hidden" aria-live="polite">
         <div class="job-heading"><h2 id="job-title" data-i18n="processing">Processing…</h2><span id="job-state" class="pill" data-i18n="running">Running</span></div>
+        <div class="progress-row"><div class="progress-track"><div id="job-progress-bar" class="progress-bar"></div></div><span id="job-progress-text">0%</span></div>
         <pre id="job-log"></pre>
         <p id="output-path"></p><button id="open-output" type="button" class="secondary hidden" data-i18n="openFinder">Open in Finder</button>
       </section>

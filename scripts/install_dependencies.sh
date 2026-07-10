@@ -6,7 +6,6 @@ export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin:$PATH"
 STATE_DIR="$HOME/.multitrack-wav-exporter"
 STATE_FILE="$STATE_DIR/managed-dependencies"
 mkdir -p "$STATE_DIR"
-touch "$STATE_FILE"
 
 if ! command -v brew >/dev/null 2>&1; then
   echo "需要 Homebrew 才能安装 FFmpeg。请先安装 Homebrew：https://brew.sh/"
@@ -28,7 +27,17 @@ fi
 if ! command -v ffmpeg >/dev/null 2>&1; then
   echo "安装 FFmpeg…"
   brew install ffmpeg
-  echo "ffmpeg" >> "$STATE_FILE"
+  BREW_BIN="$(command -v brew)"
+  BREW_PREFIX="$($BREW_BIN --prefix)"
+  FFMPEG_PREFIX="$($BREW_BIN --prefix ffmpeg)"
+  {
+    echo "schema=1"
+    echo "formula=ffmpeg"
+    echo "brew_bin=$BREW_BIN"
+    echo "brew_prefix=$BREW_PREFIX"
+    echo "ffmpeg_prefix=$FFMPEG_PREFIX"
+  } > "$STATE_FILE"
+  echo "已记录本工具安装的 FFmpeg：$FFMPEG_PREFIX"
 else
   echo "FFmpeg 已存在，保留原有安装。"
 fi

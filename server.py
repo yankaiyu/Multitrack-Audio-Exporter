@@ -11,7 +11,10 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import uuid
+import zipfile
+from concurrent.futures import ThreadPoolExecutor
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -24,6 +27,10 @@ JOBS: dict[str, dict] = {}
 JOBS_LOCK = threading.Lock()
 MAC_BIN_DIRS = [Path("/opt/homebrew/bin"), Path("/usr/local/bin")]
 WAVEFORM_FILES: dict[str, Path] = {}
+SOURCE_LOCKS: dict[str, threading.Lock] = {}
+SOURCE_LOCKS_LOCK = threading.Lock()
+LAST_CLIENT_ACTIVITY = time.monotonic()
+IDLE_SHUTDOWN_SECONDS = 60
 
 
 def tool_path(name: str) -> str | None:
@@ -40,6 +47,38 @@ def append_log(job_id: str, line: str) -> None:
         JOBS[job_id]["log"] += line
 
 
+def set_progress(job_id: str, value: int, label: str) -> None:
+    with JOBS_LOCK:
+        job = JOBS.get(job_id)
+        if job:
+            job["progress"] = max(0, min(100, value))
+            job["progressLabel"] = label
+
+
+def mark_client_activity() -> None:
+    global LAST_CLIENT_ACTIVITY
+    LAST_CLIENT_ACTIVITY = time.monotonic()
+
+
+def source_lock(source: Path) -> threading.Lock:
+    """Return a stable lock so two browser tasks cannot write one output folder."""
+    key = str(source.resolve())
+    with SOURCE_LOCKS_LOCK:
+        return SOURCE_LOCKS.setdefault(key, threading.Lock())
+
+
+def idle_shutdown_monitor(httpd: ThreadingHTTPServer) -> None:
+    """Stop the local-only server after its last browser page has gone away."""
+    while True:
+        time.sleep(2)
+        with JOBS_LOCK:
+            processing = any(job.get("status") == "running" for job in JOBS.values())
+        if not processing and time.monotonic() - LAST_CLIENT_ACTIVITY >= IDLE_SHUTDOWN_SECONDS:
+            print("No browser activity detected; stopping local server.")
+            httpd.shutdown()
+            return
+
+
 def run_process(job_id: str, command: list[str], cwd: Path | None = None) -> int:
     env = os.environ.copy()
     env["PATH"] = ":".join([str(Path.home() / ".local/bin"), *(str(folder) for folder in MAC_BIN_DIRS), env.get("PATH", "")])
@@ -50,6 +89,14 @@ def run_process(job_id: str, command: list[str], cwd: Path | None = None) -> int
         for line in process.stdout:
             append_log(job_id, line)
     return process.wait()
+
+
+def parallel_map(items: list, workers: int, action) -> list:
+    """Run independent per-track actions with a small, caller-selected limit."""
+    if workers <= 1 or len(items) <= 1:
+        return [action(item) for item in items]
+    with ThreadPoolExecutor(max_workers=min(workers, len(items))) as pool:
+        return list(pool.map(action, items))
 
 
 def peak_of_audio(path: Path) -> float | None:
@@ -77,7 +124,7 @@ def peak_of_mp3(path: Path) -> float | None:
 
 
 def sanitized_inputs(job_id: str, files: list[Path], workspace: Path,
-                     silence_threshold: float, trim_start: float, trim_end: float | None) -> tuple[dict[Path, Path], set[Path]]:
+                     silence_threshold: float, trim_start: float, trim_end: float | None, workers: int) -> tuple[dict[Path, Path], set[Path]]:
     """Make finite 32-bit float working WAVs and identify blank input channels.
 
     Some float recorders write NaN/Inf samples in unused channels. Those samples make
@@ -88,9 +135,7 @@ def sanitized_inputs(job_id: str, files: list[Path], workspace: Path,
     if not ffmpeg or not ffprobe:
         raise ValueError("找不到 FFmpeg / FFprobe，请先安装依赖。")
     workspace.mkdir(parents=True, exist_ok=True)
-    finite: dict[Path, Path] = {}
-    blank: set[Path] = set()
-    for source in files:
+    def sanitize_one(source: Path) -> tuple[Path, Path, float | None]:
         probe = subprocess.run([ffprobe, "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=channels",
                                 "-of", "default=nokey=1:noprint_wrappers=1", str(source)], capture_output=True, text=True)
         try:
@@ -104,8 +149,12 @@ def sanitized_inputs(job_id: str, files: list[Path], workspace: Path,
                    "-c:a", "pcm_f32le", str(cleaned)]
         if run_process(job_id, command) != 0:
             raise RuntimeError(f"无法清洗浮点样本：{source.name}")
+        return source, cleaned, peak_of_audio(cleaned)
+
+    finite: dict[Path, Path] = {}
+    blank: set[Path] = set()
+    for source, cleaned, peak in parallel_map(files, workers, sanitize_one):
         finite[source] = cleaned
-        peak = peak_of_audio(cleaned)
         # Unused float channels can contain low-level numeric residue. Do not raise
         # that residue to full scale: only material above the user-set threshold is active.
         if peak is None or peak <= silence_threshold:
@@ -140,14 +189,17 @@ def waveform_job(job_id: str, source_text: str) -> None:
             if not image.exists() or image.stat().st_mtime_ns < file.stat().st_mtime_ns:
                 expressions = "|".join(f"if(isnan(val({channel}))+isinf(val({channel})),0,val({channel}))" for channel in range(channels))
                 filter_graph = f"[0:a]aeval=exprs='{expressions}':c=same,showwavespic=s=1400x128:colors=0xD2F26C[wave]"
+                temporary_image = cache / f".{file.stem}.{uuid.uuid4().hex}.png"
                 command = [ffmpeg, "-hide_banner", "-y", "-i", str(file), "-filter_complex", filter_graph,
-                           "-map", "[wave]", "-frames:v", "1", str(image)]
+                           "-map", "[wave]", "-frames:v", "1", str(temporary_image)]
                 if run_process(job_id, command) != 0:
                     raise RuntimeError(f"无法生成波形：{file.name}")
+                os.replace(temporary_image, image)
             token = uuid.uuid4().hex
             WAVEFORM_FILES[token] = image
             previews.append({"name": file.name, "duration": duration, "image": f"/api/waveform/{token}"})
             append_log(job_id, f"波形 {index + 1}/{len(files)}：{file.name}\n")
+            set_progress(job_id, round((index + 1) / len(files) * 100), f"生成波形 {index + 1}/{len(files)}")
         with JOBS_LOCK:
             JOBS[job_id].update(status="done", preview=previews)
     except Exception as error:
@@ -158,7 +210,7 @@ def waveform_job(job_id: str, source_text: str) -> None:
 
 def encode_mp3(job_id: str, ffmpeg: str, input_file: Path, output_file: Path, bitrate: int,
                sample_rate: int | None, gain_db: float | None = None) -> None:
-    command = [ffmpeg, "-y", "-i", str(input_file)]
+    command = [ffmpeg, "-y", "-threads", "1", "-i", str(input_file)]
     if gain_db is not None:
         command += ["-af", f"volume={gain_db:.4f}dB"]
     command += ["-c:a", "libmp3lame", "-b:a", f"{bitrate}k"]
@@ -170,6 +222,22 @@ def encode_mp3(job_id: str, ffmpeg: str, input_file: Path, output_file: Path, bi
 
 
 def convert_job(job_id: str, options: dict) -> None:
+    """Serialize jobs targeting the same source folder while allowing other folders through."""
+    try:
+        lock = source_lock(Path(options["source"]).expanduser())
+    except (KeyError, TypeError):
+        _convert_job(job_id, options)
+        return
+    if not lock.acquire(blocking=False):
+        append_log(job_id, "同一源文件夹已有任务在运行；本任务正在等待输出目录锁。\n")
+        lock.acquire()
+    try:
+        _convert_job(job_id, options)
+    finally:
+        lock.release()
+
+
+def _convert_job(job_id: str, options: dict) -> None:
     try:
         source = Path(options["source"]).expanduser().resolve()
         if not source.is_dir():
@@ -191,6 +259,9 @@ def convert_job(job_id: str, options: dict) -> None:
         sample_rate = int(sample_rate) if sample_rate else None
         ceiling = float(options["ceiling"])
         silence_threshold = float(options.get("silenceThreshold", "-40"))
+        workers = int(options.get("workers", "2"))
+        if workers not in {1, 2, 4}:
+            raise ValueError("无效的并发轨道数。")
         trim_start = float(options.get("trimStart") or 0)
         trim_end = float(options["trimEnd"]) if options.get("trimEnd") else None
         if trim_start < 0 or (trim_end is not None and trim_end <= trim_start):
@@ -198,20 +269,36 @@ def convert_job(job_id: str, options: dict) -> None:
         output = source / "normalized_mp3"
         output.mkdir(exist_ok=True)
         append_log(job_id, f"将转换 {len(files)} 个 WAV，输出：{output}\n")
+        set_progress(job_id, 2, f"准备处理 {len(files)} 条轨道")
 
         ffmpeg = tool_path("ffmpeg")
         if not ffmpeg:
             raise ValueError("找不到 FFmpeg，请先安装依赖。")
         with tempfile.TemporaryDirectory(prefix="multitrack-wav-export-") as temp:
-            cleaned, blank = sanitized_inputs(job_id, files, Path(temp), silence_threshold, trim_start, trim_end)
+            set_progress(job_id, 5, "清洗浮点样本并测量峰值")
+            cleaned, blank = sanitized_inputs(job_id, files, Path(temp), silence_threshold, trim_start, trim_end, workers)
+            set_progress(job_id, 20, "浮点样本清洗完成")
             active = [file for file in files if file not in blank]
             # Empty recorder channels are still included in the share package, but they stay silent.
-            for file in blank:
+            completed = 0
+            completed_lock = threading.Lock()
+            total_tracks = len(files)
+
+            def mark_encoded(file: Path) -> None:
+                nonlocal completed
+                with completed_lock:
+                    completed += 1
+                    set_progress(job_id, 20 + round(65 * completed / total_tracks), f"已编码 {completed}/{total_tracks} 条轨道")
+
+            def encode_blank(file: Path) -> None:
                 encode_mp3(job_id, ffmpeg, cleaned[file], output / f"{file.stem}.mp3", bitrate, sample_rate)
+                mark_encoded(file)
+
+            parallel_map(list(blank), workers, encode_blank)
 
             if mode == "convert":
                 target = ceiling - 0.2
-                for file in active:
+                def convert_safely(file: Path) -> None:
                     output_file = output / f"{file.stem}.mp3"
                     input_peak = peak_of_audio(cleaned[file])
                     if input_peak is None:
@@ -230,6 +317,8 @@ def convert_job(job_id: str, options: dict) -> None:
                         encode_mp3(job_id, ffmpeg, cleaned[file], output_file, bitrate, sample_rate, gain)
                     else:
                         raise RuntimeError(f"无法让 {file.name} 满足安全峰值上限。")
+                    mark_encoded(file)
+                parallel_map(active, workers, convert_safely)
             elif active:
                 # ffmpeg-normalize's peak scanner can mis-handle NaN-bearing float WAVs.
                 # Measure the cleaned PCM with FFmpeg itself and apply a deterministic linear gain.
@@ -244,13 +333,18 @@ def convert_job(job_id: str, options: dict) -> None:
                     gains = {file: target - input_peaks[file] for file in active}
                 append_log(job_id, "归一化增益：" + ", ".join(f"{file.name} {gain:+.2f} dB" for file, gain in gains.items()) + "\n")
                 for _ in range(3):
-                    for file in active:
+                    def encode_normalized(file: Path) -> None:
                         encode_mp3(job_id, ffmpeg, cleaned[file], output / f"{file.stem}.mp3", bitrate, sample_rate, gains[file])
-                    measured = {file: peak_of_mp3(output / f"{file.stem}.mp3") for file in active}
+                        mark_encoded(file)
+                    parallel_map(active, workers, encode_normalized)
+                    measured = dict(parallel_map(active, workers, lambda file: (file, peak_of_mp3(output / f"{file.stem}.mp3"))))
                     overs = {file: peak - ceiling for file, peak in measured.items() if peak is not None and peak > ceiling}
                     append_log(job_id, "编码后峰值：" + ", ".join(f"{file.name} {peak:.2f} dBFS" for file, peak in measured.items() if peak is not None) + "\n")
                     if not overs:
                         break
+                    # A safety retry re-encodes selected tracks; do not advance the
+                    # track counter again, but keep the UI in the encoding phase.
+                    completed = max(0, completed - len(active))
                     if mode == "preserve":
                         reduction = max(overs.values()) + 0.2
                         gains = {file: gain - reduction for file, gain in gains.items()}
@@ -262,6 +356,7 @@ def convert_job(job_id: str, options: dict) -> None:
                     raise RuntimeError("三次安全验证后仍无法满足输出峰值上限。")
 
         # Final report is intentionally based on the generated MP3 rather than the source WAV.
+        set_progress(job_id, 90, "验证最终 MP3 峰值")
         final_peaks = {p.name: peak_of_mp3(output / f"{p.stem}.mp3") for p in files}
         failed = [name for name, peak in final_peaks.items() if peak is not None and peak > ceiling]
         if failed:
@@ -269,11 +364,19 @@ def convert_job(job_id: str, options: dict) -> None:
         append_log(job_id, "最终 MP3 峰值验证通过。\n")
         zip_path = None
         if options.get("packageZip"):
-            zip_path = shutil.make_archive(str(source / f"{source.name}_normalized_mp3"), "zip", root_dir=output)
+            set_progress(job_id, 96, "创建分享 ZIP")
+            zip_path = str(source / f"{source.name}_normalized_mp3.zip")
+            # Package only the tracks selected for this job, never stale files left
+            # in normalized_mp3 by a previous selection.
+            with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+                for source_file in files:
+                    exported = output / f"{source_file.stem}.mp3"
+                    if exported.is_file():
+                        archive.write(exported, exported.name)
             append_log(job_id, f"已创建分享 ZIP：{zip_path}\n")
 
         with JOBS_LOCK:
-            JOBS[job_id].update(status="done", output=str(output), zip=zip_path)
+            JOBS[job_id].update(status="done", output=str(output), zip=zip_path, progress=100, progressLabel="完成")
     except Exception as error:
         append_log(job_id, f"\n错误：{error}\n")
         with JOBS_LOCK:
@@ -298,6 +401,7 @@ class Handler(SimpleHTTPRequestHandler):
         return json.loads(self.rfile.read(length))
 
     def do_GET(self) -> None:
+        mark_client_activity()
         parsed = urlparse(self.path)
         if parsed.path == "/api/status":
             self.json_response({"ffmpeg": bool(tool_path("ffmpeg"))})
@@ -321,17 +425,20 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self) -> None:
         try:
+            mark_client_activity()
             data = self.read_json()
             if self.path == "/api/convert":
                 job_id = uuid.uuid4().hex
                 with JOBS_LOCK:
-                    JOBS[job_id] = {"status": "running", "log": "", "output": None}
+                    JOBS[job_id] = {"status": "running", "log": "", "output": None, "progress": 0, "progressLabel": "等待开始"}
                 threading.Thread(target=convert_job, args=(job_id, data), daemon=True).start()
                 self.json_response({"job": job_id})
+            elif self.path == "/api/heartbeat":
+                self.json_response({"ok": True})
             elif self.path == "/api/waveforms":
                 job_id = uuid.uuid4().hex
                 with JOBS_LOCK:
-                    JOBS[job_id] = {"status": "running", "log": "", "output": None, "preview": None}
+                    JOBS[job_id] = {"status": "running", "log": "", "output": None, "preview": None, "progress": 0, "progressLabel": "等待开始"}
                 threading.Thread(target=waveform_job, args=(job_id, data["source"]), daemon=True).start()
                 self.json_response({"job": job_id})
             elif self.path == "/api/dependencies":
@@ -340,7 +447,7 @@ class Handler(SimpleHTTPRequestHandler):
                     raise ValueError("无效的依赖操作。")
                 job_id = uuid.uuid4().hex
                 with JOBS_LOCK:
-                    JOBS[job_id] = {"status": "running", "log": "", "output": None}
+                    JOBS[job_id] = {"status": "running", "log": "", "output": None, "progress": 0, "progressLabel": "等待开始"}
                 def dependencies():
                     code = run_process(job_id, ["/bin/bash", str(SCRIPTS / f"{action}_dependencies.sh")], ROOT)
                     with JOBS_LOCK:
@@ -374,4 +481,5 @@ if __name__ == "__main__":
     port = 8765
     httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     print(f"Multitrack WAV Exporter is running at http://127.0.0.1:{port}")
+    threading.Thread(target=idle_shutdown_monitor, args=(httpd,), daemon=True).start()
     httpd.serve_forever()

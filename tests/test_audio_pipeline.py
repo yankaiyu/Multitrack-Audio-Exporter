@@ -6,6 +6,7 @@ import math
 import struct
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 
 import server
@@ -42,7 +43,7 @@ class FloatAudioPipelineTests(unittest.TestCase):
         source.mkdir()
         wav = source / "dirty.wav"
         write_float_wav(wav, [float("nan"), float("inf"), float("-inf"), 0.1] * 1_200)
-        cleaned, blank = server.sanitized_inputs(self.job_id, [wav], self.root / "work", -40, 0, None)
+        cleaned, blank = server.sanitized_inputs(self.job_id, [wav], self.root / "work", -40, 0, None, 1)
         self.assertNotIn(wav, blank)
         self.assertAlmostEqual(server.peak_of_audio(cleaned[wav]), -20.0, places=1)
 
@@ -50,19 +51,28 @@ class FloatAudioPipelineTests(unittest.TestCase):
         source = self.root / "source"
         source.mkdir()
         hot = source / "hot.wav"
+        hot_two = source / "hot-two.wav"
         skipped = source / "skip.wav"
-        # Both inputs are synthetic; only the selected one should be exported.
+        # All inputs are synthetic; two selected tracks exercise the parallel path.
         write_float_wav(hot, [4.0] * 4_800)
+        write_float_wav(hot_two, [2.0] * 4_800)
         write_float_wav(skipped, [0.25] * 4_800)
+        old_output = source / "normalized_mp3"
+        old_output.mkdir()
+        (old_output / "stale.mp3").write_bytes(b"not a real MP3")
         server.convert_job(self.job_id, {
-            "source": str(source), "selectedFiles": [hot.name], "mode": "per_track",
-            "bitrate": "128", "sampleRate": "", "ceiling": "-2", "silenceThreshold": "-40",
+            "source": str(source), "selectedFiles": [hot.name, hot_two.name], "mode": "per_track",
+            "bitrate": "128", "sampleRate": "", "ceiling": "-2", "silenceThreshold": "-40", "workers": "2", "packageZip": "on",
         })
         output = source / "normalized_mp3"
         self.assertEqual(server.JOBS[self.job_id]["status"], "done", server.JOBS[self.job_id]["log"])
         self.assertTrue((output / "hot.mp3").is_file())
+        self.assertTrue((output / "hot-two.mp3").is_file())
         self.assertFalse((output / "skip.mp3").exists())
         self.assertLessEqual(server.peak_of_mp3(output / "hot.mp3"), -2.0)
+        self.assertLessEqual(server.peak_of_mp3(output / "hot-two.mp3"), -2.0)
+        with zipfile.ZipFile(source / f"{source.name}_normalized_mp3.zip") as archive:
+            self.assertEqual(set(archive.namelist()), {"hot.mp3", "hot-two.mp3"})
 
 
 if __name__ == "__main__":
