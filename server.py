@@ -52,14 +52,23 @@ def run_process(job_id: str, command: list[str], cwd: Path | None = None) -> int
 
 
 def peak_of_audio(path: Path) -> float | None:
-    """Return decoded sample peak in dBFS. Lower is quieter; 0 is full scale."""
+    """Return decoded sample peak in dBFS, including float values above 0 dBFS."""
     ffmpeg = tool_path("ffmpeg")
     if not ffmpeg:
         return None
-    result = subprocess.run([ffmpeg, "-hide_banner", "-i", str(path), "-af", "volumedetect", "-f", "null", "-"],
+    # volumedetect clamps its report at 0 dBFS. 32-bit float WAV and decoded MP3
+    # samples can exceed it, so use astats and take the largest channel/overall peak.
+    result = subprocess.run([ffmpeg, "-hide_banner", "-i", str(path), "-af", "astats=metadata=0:reset=0", "-f", "null", "-"],
                             capture_output=True, text=True)
-    match = re.search(r"max_volume:\s*([-+\d.]+)\s*dB", result.stderr)
-    return float(match.group(1)) if match else None
+    levels = []
+    for value in re.findall(r"Peak level dB:\s*([-+\d.]+|-inf|inf)", result.stderr):
+        try:
+            level = float(value)
+            if level != float("inf") and level != float("-inf"):
+                levels.append(level)
+        except ValueError:
+            continue
+    return max(levels) if levels else None
 
 
 def peak_of_mp3(path: Path) -> float | None:
