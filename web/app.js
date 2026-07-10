@@ -66,7 +66,7 @@ $("#convert-form").addEventListener("submit", async (event) => {
 });
 
 $("#choose-folder").addEventListener("click", async () => {
-  try { const result = await api("/api/select-folder", { method:"POST", body:JSON.stringify({language}) }); if (result.path) $("#source").value = result.path.replace(/\/$/, ""); else alert(t("selectionCancelled")); }
+  try { const result = await api("/api/select-folder", { method:"POST", body:JSON.stringify({language}) }); if (result.path) $("#source").value = result.path.replace(/\/$/, ""); else alert(`${t("selectionCancelled")}${result.error ? `\n${result.error}` : ""}`); }
   catch (error) { alert(error.message); }
 });
 $("#open-output").addEventListener("click", async (event) => {
