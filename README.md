@@ -29,4 +29,4 @@ python3 server.py
 - 所有 32-bit float WAV 会先将 NaN / Infinity 样本清为静音，再测量实际峰值。即使源文件峰值超过 0 dBFS，也会先施加正确的线性增益。
 - 默认将峰值不高于 -40 dBFS 的轨道视为无输入/底噪，只转码、不归一化；可在界面调整此阈值。
 - 已归一化的 MP3 会解码检查峰值；若高于设定安全上限，会从清洗后的 WAV 自动以更低目标重新编码。
-- 卸载按钮只会删除本工具首次安装、并记录在 `~/.zoom-track-exporter/managed-dependencies` 中的 FFmpeg。原本已有的依赖不会删除。
+- 卸载按钮只会删除本工具首次安装、并记录在 `~/.multitrack-wav-exporter/managed-dependencies` 中的 FFmpeg。原本已有的依赖不会删除。
