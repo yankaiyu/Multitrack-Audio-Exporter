@@ -23,6 +23,7 @@ SCRIPTS = ROOT / "scripts"
 JOBS: dict[str, dict] = {}
 JOBS_LOCK = threading.Lock()
 MAC_BIN_DIRS = [Path("/opt/homebrew/bin"), Path("/usr/local/bin")]
+WAVEFORM_FILES: dict[str, Path] = {}
 
 
 def tool_path(name: str) -> str | None:
@@ -66,7 +67,7 @@ def peak_of_mp3(path: Path) -> float | None:
 
 
 def sanitized_inputs(job_id: str, files: list[Path], workspace: Path,
-                     silence_threshold: float) -> tuple[dict[Path, Path], set[Path]]:
+                     silence_threshold: float, trim_start: float, trim_end: float | None) -> tuple[dict[Path, Path], set[Path]]:
     """Make finite 32-bit float working WAVs and identify blank input channels.
 
     Some float recorders write NaN/Inf samples in unused channels. Those samples make
@@ -87,7 +88,8 @@ def sanitized_inputs(job_id: str, files: list[Path], workspace: Path,
             raise RuntimeError(f"无法读取声道数：{source.name}")
         expressions = "|".join(f"if(isnan(val({channel}))+isinf(val({channel})),0,val({channel}))" for channel in range(channels))
         cleaned = workspace / source.name
-        command = [ffmpeg, "-hide_banner", "-y", "-i", str(source), "-af", f"aeval=exprs='{expressions}':c=same",
+        trim = f"atrim=start={trim_start}" + (f":end={trim_end}" if trim_end is not None else "")
+        command = [ffmpeg, "-hide_banner", "-y", "-i", str(source), "-af", f"{trim},aeval=exprs='{expressions}':c=same",
                    "-c:a", "pcm_f32le", str(cleaned)]
         if run_process(job_id, command) != 0:
             raise RuntimeError(f"无法清洗浮点样本：{source.name}")
@@ -99,6 +101,48 @@ def sanitized_inputs(job_id: str, files: list[Path], workspace: Path,
             blank.add(source)
             append_log(job_id, f"{source.name} 峰值 {peak if peak is not None else '未知'} dBFS，低于无输入阈值 {silence_threshold:.0f} dBFS：仅转 MP3，不归一化。\n")
     return finite, blank
+
+
+def waveform_job(job_id: str, source_text: str) -> None:
+    """Generate compact cached waveform PNGs for the trimming UI."""
+    try:
+        source = Path(source_text).expanduser().resolve()
+        files = sorted(p for p in source.iterdir() if p.is_file() and p.suffix.lower() == ".wav")
+        ffmpeg, ffprobe = tool_path("ffmpeg"), tool_path("ffprobe")
+        if not files:
+            raise ValueError("该文件夹中没有 WAV 文件。")
+        if not ffmpeg or not ffprobe:
+            raise ValueError("找不到 FFmpeg / FFprobe，请先安装依赖。")
+        cache = source / ".multitrack-wav-exporter-preview"
+        cache.mkdir(exist_ok=True)
+        previews = []
+        for index, file in enumerate(files):
+            probe = subprocess.run([ffprobe, "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=channels",
+                                    "-of", "default=nokey=1:noprint_wrappers=1", str(file)], capture_output=True, text=True)
+            channels = int(probe.stdout.strip())
+            duration_result = subprocess.run([ffprobe, "-v", "error", "-show_entries", "format=duration",
+                                              "-of", "default=nokey=1:noprint_wrappers=1", str(file)], capture_output=True, text=True)
+            duration = float(duration_result.stdout.strip())
+            image = cache / f"{file.stem}.png"
+            # Regenerate only when the WAV changed. The aeval stage removes non-finite
+            # float samples before showwavespic draws the visual preview.
+            if not image.exists() or image.stat().st_mtime_ns < file.stat().st_mtime_ns:
+                expressions = "|".join(f"if(isnan(val({channel}))+isinf(val({channel})),0,val({channel}))" for channel in range(channels))
+                filter_graph = f"[0:a]aeval=exprs='{expressions}':c=same,showwavespic=s=1400x128:colors=0xD2F26C[wave]"
+                command = [ffmpeg, "-hide_banner", "-y", "-i", str(file), "-filter_complex", filter_graph,
+                           "-map", "[wave]", "-frames:v", "1", str(image)]
+                if run_process(job_id, command) != 0:
+                    raise RuntimeError(f"无法生成波形：{file.name}")
+            token = uuid.uuid4().hex
+            WAVEFORM_FILES[token] = image
+            previews.append({"name": file.name, "duration": duration, "image": f"/api/waveform/{token}"})
+            append_log(job_id, f"波形 {index + 1}/{len(files)}：{file.name}\n")
+        with JOBS_LOCK:
+            JOBS[job_id].update(status="done", preview=previews)
+    except Exception as error:
+        append_log(job_id, f"\n错误：{error}\n")
+        with JOBS_LOCK:
+            JOBS[job_id]["status"] = "error"
 
 
 def encode_mp3(job_id: str, ffmpeg: str, input_file: Path, output_file: Path, bitrate: int,
@@ -122,21 +166,33 @@ def convert_job(job_id: str, options: dict) -> None:
         files = sorted([p for p in source.iterdir() if p.is_file() and p.suffix.lower() == ".wav"])
         if not files:
             raise ValueError("该文件夹中没有 WAV 文件。")
+        selected = options.get("selectedFiles")
+        if selected is not None:
+            if isinstance(selected, str):
+                selected = [selected]
+            selected_names = set(selected)
+            files = [file for file in files if file.name in selected_names]
+            if not files:
+                raise ValueError("请至少选择一条要转换的轨道。")
         mode = options["mode"]
         bitrate = int(options["bitrate"])
         sample_rate = options.get("sampleRate")
         sample_rate = int(sample_rate) if sample_rate else None
         ceiling = float(options["ceiling"])
         silence_threshold = float(options.get("silenceThreshold", "-40"))
+        trim_start = float(options.get("trimStart") or 0)
+        trim_end = float(options["trimEnd"]) if options.get("trimEnd") else None
+        if trim_start < 0 or (trim_end is not None and trim_end <= trim_start):
+            raise ValueError("裁剪结束时间必须大于开始时间。")
         output = source / "normalized_mp3"
         output.mkdir(exist_ok=True)
-        append_log(job_id, f"发现 {len(files)} 个 WAV，输出：{output}\n")
+        append_log(job_id, f"将转换 {len(files)} 个 WAV，输出：{output}\n")
 
         ffmpeg = tool_path("ffmpeg")
         if not ffmpeg:
             raise ValueError("找不到 FFmpeg，请先安装依赖。")
         with tempfile.TemporaryDirectory(prefix="multitrack-wav-export-") as temp:
-            cleaned, blank = sanitized_inputs(job_id, files, Path(temp), silence_threshold)
+            cleaned, blank = sanitized_inputs(job_id, files, Path(temp), silence_threshold, trim_start, trim_end)
             active = [file for file in files if file not in blank]
             # Empty recorder channels are still included in the share package, but they stay silent.
             for file in blank:
@@ -238,6 +294,17 @@ class Handler(SimpleHTTPRequestHandler):
             with JOBS_LOCK:
                 job = JOBS.get(parsed.path.rsplit("/", 1)[-1])
                 self.json_response(job or {"status": "missing"}, 404 if not job else 200)
+        elif parsed.path.startswith("/api/waveform/"):
+            image = WAVEFORM_FILES.get(parsed.path.rsplit("/", 1)[-1])
+            if not image or not image.is_file():
+                self.send_error(404)
+                return
+            body = image.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
         else:
             super().do_GET()
 
@@ -249,6 +316,12 @@ class Handler(SimpleHTTPRequestHandler):
                 with JOBS_LOCK:
                     JOBS[job_id] = {"status": "running", "log": "", "output": None}
                 threading.Thread(target=convert_job, args=(job_id, data), daemon=True).start()
+                self.json_response({"job": job_id})
+            elif self.path == "/api/waveforms":
+                job_id = uuid.uuid4().hex
+                with JOBS_LOCK:
+                    JOBS[job_id] = {"status": "running", "log": "", "output": None, "preview": None}
+                threading.Thread(target=waveform_job, args=(job_id, data["source"]), daemon=True).start()
                 self.json_response({"job": job_id})
             elif self.path == "/api/dependencies":
                 action = data.get("action")

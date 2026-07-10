@@ -11,6 +11,7 @@ All processing happens on your Mac. No audio is uploaded anywhere.
 - Batch-process WAV files directly inside a selected folder.
 - Export MP3 at 128–320 kbps and retain or select the output sample rate.
 - Create a ZIP share package alongside the output folder.
+- Optionally generate cached waveform previews, trim every aligned track with one shared dual-handle range, and select the tracks to export.
 - Choose per-track peak normalization, group-relative normalization, or minimal level adjustment.
 - Safely handle 32-bit float WAV files: non-finite samples (NaN / Infinity) are converted to silence before measurement or encoding.
 - Measure the actual cleaned signal peak, including float signals above 0 dBFS, then apply a correct linear gain before MP3 encoding.
@@ -22,7 +23,8 @@ All processing happens on your Mac. No audio is uploaded anywhere.
 1. Double-click `start.command`.
 2. Your default browser opens at <http://127.0.0.1:8765>.
 3. On first use, click **Install / Repair** to install FFmpeg through Homebrew.
-4. Select a folder containing WAV files, adjust export settings, and click **Start export**.
+4. Select a folder containing WAV files. Optionally click **Load waveforms**, select the tracks to export, and set a shared trim range.
+5. Adjust export settings and click **Start export**.
 
 The MP3 files are written to `normalized_mp3` inside the selected source folder. A ZIP file is also created by default for easy sharing.
 
@@ -69,6 +71,7 @@ The red **Uninstall app-managed dependencies** button removes only FFmpeg that t
 - 批量处理所选文件夹第一层中的 WAV 文件。
 - 支持 128–320 kbps MP3，采样率可保持原始或自行选择。
 - 默认同时生成 ZIP 分享包。
+- 可选生成缓存波形预览；加载后可选择要导出的轨道，并用同一条双端滑块裁剪所有对齐轨道。
 - 支持每轨峰值归一化、整组保持相对音量、或尽量保持原音量三种模式。
 - 专门处理 32-bit float WAV：NaN / Infinity 非有限样本会先变为静音，不会进入测量或编码流程。
 - 测量清洗后的实际峰值；即使浮点信号高于 0 dBFS，也会在 MP3 编码前施加正确的线性增益。
@@ -80,7 +83,8 @@ The red **Uninstall app-managed dependencies** button removes only FFmpeg that t
 1. 双击 `start.command`。
 2. 默认浏览器会打开 <http://127.0.0.1:8765>。
 3. 首次使用时，点击 **安装 / 修复依赖**，工具会通过 Homebrew 安装 FFmpeg。
-4. 选择包含 WAV 的文件夹，调整导出设置后点击 **开始转换**。
+4. 选择包含 WAV 的文件夹；如需裁剪或选择部分轨道，可点击 **加载波形**，再设定全局裁剪范围。
+5. 调整导出设置后点击 **开始转换**。
 
 MP3 会写入所选源文件夹中的 `normalized_mp3`；默认还会生成一个便于发送的 ZIP 文件。
 

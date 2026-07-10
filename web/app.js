@@ -4,6 +4,8 @@ const translations = {
   en: { pageTitle:"Multitrack WAV Exporter", appName:"Multitrack WAV Exporter", language:"Language", lede:"Batch-export aligned 32-bit float WAV files as safe, shareable MP3s.", dependencies:"Dependencies", checking:"Checking FFmpeg…", install:"Install / Repair", uninstall:"Uninstall app-managed dependencies", exportSettings:"Export settings", sourceFolder:"Source folder", choose:"Choose…", sourceHelp:"Reads WAVs directly inside this folder; exports to <code>normalized_mp3</code>.", levelProcessing:"Level processing", perTrack:"Normalize each track", perTrackHelp:"Best for pre-fader recordings. Adjust each track independently, then remix after import.", preserve:"Preserve relative levels", preserveHelp:"Apply one gain to the whole group, retaining the original balance.", convert:"Keep levels where safe", convertHelp:"Only lower and re-encode a track if its encoded MP3 exceeds the safety ceiling.", bitrate:"MP3 bitrate", recommendedBitrate:"256 kbps (recommended)", sampleRate:"Sample rate", keepOriginal:"Keep original (recommended)", safePeak:"Final MP3 safety ceiling", recommendedCeiling:"-2.0 dBFS (recommended)", silenceThreshold:"Empty-track threshold", onlyDigital:"-90 dBFS (only digital silence)", recommendedThreshold:"-40 dBFS (recommended)", notice:"Every mode cleans NaN/Infinity float samples, measures the real peak, then checks decoded MP3 peaks. Signals above 0 dBFS are safely reduced before encoding.", zip:"Also create a ZIP share package (AirDrop, cloud drive, or bandmates)", start:"Start export", processing:"Processing…", running:"Running", done:"Done", error:"Error", openFinder:"Open in Finder", ready:"Ready: FFmpeg is available.", missingFfmpeg:"FFmpeg is not ready.", unable:"Unable to check dependencies: ", installConfirm:"This will use Homebrew to install missing local dependencies. Continue?", uninstallConfirm:"Only dependencies installed and recorded by this app will be removed. Continue?", output:"Output folder: ", zipOutput:"Share ZIP: ", selectionCancelled:"No folder was selected." },
   zh: { pageTitle:"多轨 WAV 批量导出", appName:"多轨 WAV 批量导出", language:"语言", lede:"把多个对齐的 32-bit float WAV 安全批量导出为便于分享的 MP3。", dependencies:"运行依赖", checking:"正在检查 FFmpeg…", install:"安装 / 修复依赖", uninstall:"卸载本工具安装的依赖", exportSettings:"导出设置", sourceFolder:"歌曲文件夹", choose:"选择…", sourceHelp:"读取此文件夹第一层中的 WAV；输出至 <code>normalized_mp3</code>。", levelProcessing:"音量处理", perTrack:"每轨标准化", perTrackHelp:"适合 pre-fader 原始录音。每条轨道独立调整，导入后重新混音。", preserve:"保持相对响度", preserveHelp:"整组轨道使用同一增益，保留原有轨间平衡。", convert:"尽量保持原音量，仅安全降幅", convertHelp:"仅当编码后超过安全上限时，才降低该轨并重编码。", bitrate:"MP3 比特率", recommendedBitrate:"256 kbps（推荐）", sampleRate:"采样率", keepOriginal:"保持原始（推荐）", safePeak:"最终 MP3 安全峰值", recommendedCeiling:"-2.0 dBFS（推荐）", silenceThreshold:"无输入/底噪阈值", onlyDigital:"-90 dBFS（仅数字静音）", recommendedThreshold:"-40 dBFS（推荐）", notice:"所有模式都会先清洗 NaN / Infinity 浮点样本、测量实际峰值，再检查解码后的 MP3 峰值。高于 0 dBFS 的 32-bit float 信号会在编码前安全降低。", zip:"同时创建 ZIP 分享包（方便 AirDrop、网盘或发送给队友）", start:"开始转换", processing:"正在处理…", running:"运行中", done:"完成", error:"出错", openFinder:"在 Finder 中打开", ready:"已就绪：FFmpeg 可用。", missingFfmpeg:"FFmpeg 未就绪。", unable:"无法检查依赖：", installConfirm:"将通过 Homebrew 安装缺少的本地依赖。继续？", uninstallConfirm:"只会卸载本工具曾安装并记录的依赖。继续？", output:"输出文件夹：", zipOutput:"分享 ZIP：", selectionCancelled:"未选择文件夹。" }
 };
+Object.assign(translations.en, { trimTitle:"Preview & trim", trimHelp:"Optional: loading waveforms enables shared trimming and individual track selection. Without it, all tracks convert normally.", loadWaveforms:"Load waveforms", trimStart:"Start (seconds)", trimEnd:"End (seconds)", loadingWaveforms:"Generating waveform previews…", waveformsReady:"Waveforms ready. Drag the sliders or enter precise times.", chooseSourceFirst:"Choose a source folder first.", selectAll:"Select all", selectNone:"Select none" });
+Object.assign(translations.zh, { trimTitle:"波形预览与裁剪", trimHelp:"可选步骤：加载波形后才可统一裁剪并逐轨选择；不加载也会正常转换全部轨道。", loadWaveforms:"加载波形", trimStart:"开始时间（秒）", trimEnd:"结束时间（秒）", loadingWaveforms:"正在生成波形预览…", waveformsReady:"波形已就绪。拖动滑块或输入精确时间。", chooseSourceFirst:"请先选择歌曲文件夹。", selectAll:"全选", selectNone:"全不选" });
 let language = localStorage.getItem("language") || (navigator.language.startsWith("zh") ? "zh" : "en");
 const t = (key) => translations[language][key] || key;
 
@@ -28,6 +30,58 @@ async function refreshStatus() {
   const ready = status.ffmpeg;
   $("#dependency-status").textContent = ready ? t("ready") : t("missingFfmpeg");
   $("#convert-button").disabled = !ready;
+}
+
+let waveformTracks = [];
+let waveformDuration = 0;
+
+function syncTrim(changed = "") {
+  if (!waveformDuration) return;
+  let start = Number($("#trim-start").value) || 0;
+  let end = Number($("#trim-end").value) || waveformDuration;
+  start = Math.max(0, Math.min(start, waveformDuration));
+  end = Math.max(0, Math.min(end, waveformDuration));
+  if (changed === "start" && start >= end) end = Math.min(waveformDuration, start + 0.001);
+  if (changed === "end" && end <= start) start = Math.max(0, end - 0.001);
+  $("#trim-start").value = start.toFixed(3);
+  $("#trim-end").value = end.toFixed(3);
+  $("#trim-start-range").value = start;
+  $("#trim-end-range").value = end;
+  $("#trim-fill").style.left = `${start / waveformDuration * 100}%`;
+  $("#trim-fill").style.width = `${(end - start) / waveformDuration * 100}%`;
+  document.querySelectorAll(".trim-range-overlay").forEach((overlay) => {
+    const duration = Number(overlay.dataset.duration) || waveformDuration;
+    overlay.style.left = `${Math.min(100, start / duration * 100)}%`;
+    overlay.style.right = `${Math.max(0, 100 - end / duration * 100)}%`;
+  });
+}
+
+function renderWaveforms(preview) {
+  waveformTracks = preview;
+  waveformDuration = Math.min(...preview.map((track) => track.duration));
+  const waves = $("#waveforms");
+  waves.innerHTML = preview.map((track) => `<div class="wave-track"><label class="wave-name track-select"><input type="checkbox" name="selectedFiles" value="${track.name}" checked />${track.name}</label><img class="wave-image" src="${track.image}" alt="${track.name}" /><div class="trim-range-overlay" data-duration="${track.duration}"></div></div>`).join("");
+  ["#trim-start-range", "#trim-end-range"].forEach((selector) => { $(selector).max = waveformDuration; });
+  $("#trim-end").max = waveformDuration;
+  $("#trim-controls").classList.remove("hidden");
+  $("#select-all").classList.remove("hidden");
+  $("#select-none").classList.remove("hidden");
+  $("#trim-end").value = waveformDuration.toFixed(3);
+  $("#waveform-status").textContent = t("waveformsReady");
+  syncTrim();
+}
+
+function pollWaveforms(job) {
+  const timer = setInterval(async () => {
+    const data = await api(`/api/job/${job}`);
+    $("#waveform-status").textContent = data.log || t("loadingWaveforms");
+    if (data.status !== "running") {
+      clearInterval(timer);
+      $("#load-waveforms").disabled = false;
+      if (data.status === "done") renderWaveforms(data.preview);
+      else $("#waveform-status").textContent = data.log || t("error");
+    }
+  }, 500);
 }
 
 function watch(job) {
@@ -59,8 +113,11 @@ $("#convert-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   $("#convert-button").disabled = true;
   const form = new FormData(event.currentTarget);
+  const payload = Object.fromEntries(form);
+  const selectionControls = document.querySelectorAll("input[name=selectedFiles]");
+  if (selectionControls.length) payload.selectedFiles = [...selectionControls].filter((item) => item.checked).map((item) => item.value);
   try {
-    const result = await api("/api/convert", { method: "POST", body: JSON.stringify(Object.fromEntries(form)) });
+    const result = await api("/api/convert", { method: "POST", body: JSON.stringify(payload) });
     watch(result.job);
   } catch (error) { alert(error.message); $("#convert-button").disabled = false; }
 });
@@ -69,6 +126,21 @@ $("#choose-folder").addEventListener("click", async () => {
   try { const result = await api("/api/select-folder", { method:"POST", body:JSON.stringify({language}) }); if (result.path) $("#source").value = result.path.replace(/\/$/, ""); else alert(`${t("selectionCancelled")}${result.error ? `\n${result.error}` : ""}`); }
   catch (error) { alert(error.message); }
 });
+$("#load-waveforms").addEventListener("click", async () => {
+  const source = $("#source").value.trim();
+  if (!source) { alert(t("chooseSourceFirst")); return; }
+  $("#load-waveforms").disabled = true;
+  $("#waveform-status").textContent = t("loadingWaveforms");
+  $("#waveforms").innerHTML = "";
+  try { pollWaveforms((await api("/api/waveforms", { method:"POST", body:JSON.stringify({source}) })).job); }
+  catch (error) { $("#load-waveforms").disabled = false; $("#waveform-status").textContent = error.message; }
+});
+$("#trim-start").addEventListener("input", () => syncTrim("start"));
+$("#trim-end").addEventListener("input", () => syncTrim("end"));
+$("#trim-start-range").addEventListener("input", (event) => { $("#trim-start").value = event.target.value; syncTrim("start"); });
+$("#trim-end-range").addEventListener("input", (event) => { $("#trim-end").value = event.target.value; syncTrim("end"); });
+$("#select-all").addEventListener("click", () => document.querySelectorAll("input[name=selectedFiles]").forEach((item) => { item.checked = true; }));
+$("#select-none").addEventListener("click", () => document.querySelectorAll("input[name=selectedFiles]").forEach((item) => { item.checked = false; }));
 $("#open-output").addEventListener("click", async (event) => {
   try { await api("/api/open-folder", { method:"POST", body:JSON.stringify({path:event.currentTarget.dataset.path}) }); }
   catch (error) { alert(error.message); }

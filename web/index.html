@@ -33,6 +33,17 @@
           <small data-i18n-html="sourceHelp">Reads WAVs directly inside this folder; exports to <code>normalized_mp3</code>.</small>
         </label>
 
+        <section class="trim-section">
+          <div class="section-heading"><div><h2 data-i18n="trimTitle">Preview & trim</h2><p data-i18n="trimHelp">Optional: loading waveforms enables shared trimming and individual track selection. Without it, all tracks convert normally.</p></div><div class="preview-actions"><button id="select-all" type="button" class="text-button hidden" data-i18n="selectAll">Select all</button><button id="select-none" type="button" class="text-button hidden" data-i18n="selectNone">Select none</button><button id="load-waveforms" type="button" class="secondary" data-i18n="loadWaveforms">Load waveforms</button></div></div>
+          <div id="trim-controls" class="trim-controls hidden">
+            <label><span data-i18n="trimStart">Start (seconds)</span><input id="trim-start" name="trimStart" type="number" min="0" step="0.001" value="0" /></label>
+            <label><span data-i18n="trimEnd">End (seconds)</span><input id="trim-end" name="trimEnd" type="number" min="0" step="0.001" /></label>
+            <div class="range-controls"><div class="range-rail"></div><div id="trim-fill" class="range-fill"></div><input id="trim-start-range" type="range" min="0" step="0.001" value="0" /><input id="trim-end-range" type="range" min="0" step="0.001" /></div>
+          </div>
+          <div id="waveform-status" class="trim-status"></div>
+          <div id="waveforms" class="waveforms"></div>
+        </section>
+
         <fieldset>
           <legend data-i18n="levelProcessing">Level processing</legend>
           <label class="radio-choice">
