@@ -10,7 +10,7 @@
 python3 server.py
 ```
 
-打开 <http://127.0.0.1:8765>。点击「选择…」将调用 macOS 原生文件夹选择器。首次使用请在网页「依赖」区域点击安装。安装脚本使用 Homebrew 安装 FFmpeg 和 pipx，并使用 pipx 安装 ffmpeg-normalize。
+打开 <http://127.0.0.1:8765>。点击「选择…」将调用 macOS 原生文件夹选择器。首次使用请在网页「依赖」区域点击安装；它使用 Homebrew 安装 FFmpeg。
 
 运行网页服务需要 macOS 自带或已安装的 Python 3。若系统提示尚未接受 Xcode Command Line Tools 许可，请在 Terminal 运行一次 `sudo xcodebuild -license` 并按提示接受；之后重新双击 `start.command`。
 
@@ -26,5 +26,7 @@ python3 server.py
 
 - 所有音频处理只发生在本机；没有上传功能。
 - 输出在所选歌曲文件夹内的 `normalized_mp3`。默认也会在同一位置生成可直接分享的 ZIP 包。
-- 已归一化的 MP3 会解码检查峰值；若高于设定安全上限，会从原始 WAV 自动以更低目标重新编码。
-- 卸载按钮只会删除本工具首次安装、并记录在 `~/.zoom-track-exporter/managed-dependencies` 中的 FFmpeg / ffmpeg-normalize。原本已有的依赖不会删除。
+- 所有 32-bit float WAV 会先将 NaN / Infinity 样本清为静音，再测量实际峰值。即使源文件峰值超过 0 dBFS，也会先施加正确的线性增益。
+- 默认将峰值不高于 -40 dBFS 的轨道视为无输入/底噪，只转码、不归一化；可在界面调整此阈值。
+- 已归一化的 MP3 会解码检查峰值；若高于设定安全上限，会从清洗后的 WAV 自动以更低目标重新编码。
+- 卸载按钮只会删除本工具首次安装、并记录在 `~/.zoom-track-exporter/managed-dependencies` 中的 FFmpeg。原本已有的依赖不会删除。

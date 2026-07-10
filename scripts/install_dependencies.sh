@@ -33,18 +33,4 @@ else
   echo "FFmpeg 已存在，保留原有安装。"
 fi
 
-if ! command -v pipx >/dev/null 2>&1; then
-  echo "安装 pipx…"
-  brew install pipx
-  echo "pipx" >> "$STATE_FILE"
-fi
-
-if ! command -v ffmpeg-normalize >/dev/null 2>&1 && [ ! -x "$HOME/.local/bin/ffmpeg-normalize" ]; then
-  echo "安装 ffmpeg-normalize…"
-  pipx install ffmpeg-normalize
-  echo "ffmpeg-normalize" >> "$STATE_FILE"
-else
-  echo "ffmpeg-normalize 已存在，保留原有安装。"
-fi
-
-echo "依赖检查完成。若刚安装 pipx，请重开本工具以刷新环境。"
+echo "依赖检查完成。"

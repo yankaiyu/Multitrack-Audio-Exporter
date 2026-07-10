@@ -9,6 +9,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import uuid
 from http import HTTPStatus
@@ -27,8 +28,6 @@ MAC_BIN_DIRS = [Path("/opt/homebrew/bin"), Path("/usr/local/bin")]
 def tool_path(name: str) -> str | None:
     """Find tools installed by Homebrew, pipx, or normally available on PATH."""
     candidates = [shutil.which(name), *(str(folder / name) for folder in MAC_BIN_DIRS)]
-    if name == "ffmpeg-normalize":
-        candidates += [str(Path.home() / ".local/bin" / name), str(Path.home() / ".local/pipx/venvs/ffmpeg-normalize/bin" / name)]
     for item in candidates:
         if item and Path(item).is_file() and os.access(item, os.X_OK):
             return item
@@ -51,7 +50,7 @@ def run_process(job_id: str, command: list[str], cwd: Path | None = None) -> int
     return process.wait()
 
 
-def peak_of_mp3(path: Path) -> float | None:
+def peak_of_audio(path: Path) -> float | None:
     """Return decoded sample peak in dBFS. Lower is quieter; 0 is full scale."""
     ffmpeg = tool_path("ffmpeg")
     if not ffmpeg:
@@ -62,16 +61,57 @@ def peak_of_mp3(path: Path) -> float | None:
     return float(match.group(1)) if match else None
 
 
-def normalize_command(files: list[Path], output: Path, mode: str, target: float, bitrate: int,
-                      sample_rate: int | None) -> list[str]:
-    normalize = tool_path("ffmpeg-normalize")
-    command = [normalize or "ffmpeg-normalize", *map(str, files), "-nt", "peak", "-t", str(target),
-               "-c:a", "libmp3lame", "-b:a", f"{bitrate}k", "-ext", "mp3", "-of", str(output), "-f"]
-    if mode == "preserve":
-        command.append("--batch")
+def peak_of_mp3(path: Path) -> float | None:
+    return peak_of_audio(path)
+
+
+def sanitized_inputs(job_id: str, files: list[Path], workspace: Path,
+                     silence_threshold: float) -> tuple[dict[Path, Path], set[Path]]:
+    """Make finite 32-bit float working WAVs and identify blank input channels.
+
+    Some float recorders write NaN/Inf samples in unused channels. Those samples make
+    peak analyzers return NaN/Inf and can crash lossy encoders, so never pass them on.
+    """
+    ffmpeg = tool_path("ffmpeg")
+    ffprobe = tool_path("ffprobe")
+    if not ffmpeg or not ffprobe:
+        raise ValueError("找不到 FFmpeg / FFprobe，请先安装依赖。")
+    finite: dict[Path, Path] = {}
+    blank: set[Path] = set()
+    for source in files:
+        probe = subprocess.run([ffprobe, "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=channels",
+                                "-of", "default=nokey=1:noprint_wrappers=1", str(source)], capture_output=True, text=True)
+        try:
+            channels = int(probe.stdout.strip())
+        except ValueError:
+            raise RuntimeError(f"无法读取声道数：{source.name}")
+        expressions = "|".join(f"if(isnan(val({channel}))+isinf(val({channel})),0,val({channel}))" for channel in range(channels))
+        cleaned = workspace / source.name
+        command = [ffmpeg, "-hide_banner", "-y", "-i", str(source), "-af", f"aeval=exprs='{expressions}':c=same",
+                   "-c:a", "pcm_f32le", str(cleaned)]
+        if run_process(job_id, command) != 0:
+            raise RuntimeError(f"无法清洗浮点样本：{source.name}")
+        finite[source] = cleaned
+        peak = peak_of_audio(cleaned)
+        # Unused float channels can contain low-level numeric residue. Do not raise
+        # that residue to full scale: only material above the user-set threshold is active.
+        if peak is None or peak <= silence_threshold:
+            blank.add(source)
+            append_log(job_id, f"{source.name} 峰值 {peak if peak is not None else '未知'} dBFS，低于无输入阈值 {silence_threshold:.0f} dBFS：仅转 MP3，不归一化。\n")
+    return finite, blank
+
+
+def encode_mp3(job_id: str, ffmpeg: str, input_file: Path, output_file: Path, bitrate: int,
+               sample_rate: int | None, gain_db: float | None = None) -> None:
+    command = [ffmpeg, "-y", "-i", str(input_file)]
+    if gain_db is not None:
+        command += ["-af", f"volume={gain_db:.4f}dB"]
+    command += ["-c:a", "libmp3lame", "-b:a", f"{bitrate}k"]
     if sample_rate:
         command += ["-ar", str(sample_rate)]
-    return command
+    command.append(str(output_file))
+    if run_process(job_id, command) != 0:
+        raise RuntimeError(f"转换失败：{input_file.name}")
 
 
 def convert_job(job_id: str, options: dict) -> None:
@@ -87,66 +127,72 @@ def convert_job(job_id: str, options: dict) -> None:
         sample_rate = options.get("sampleRate")
         sample_rate = int(sample_rate) if sample_rate else None
         ceiling = float(options["ceiling"])
+        silence_threshold = float(options.get("silenceThreshold", "-40"))
         output = source / "normalized_mp3"
         output.mkdir(exist_ok=True)
         append_log(job_id, f"发现 {len(files)} 个 WAV，输出：{output}\n")
 
-        if mode == "convert":
-            ffmpeg = tool_path("ffmpeg")
-            if not ffmpeg:
-                raise ValueError("找不到 FFmpeg，请先安装依赖。")
-            for file in files:
-                out = output / f"{file.stem}.mp3"
-                command = [ffmpeg, "-y", "-i", str(file), "-c:a", "libmp3lame", "-b:a", f"{bitrate}k"]
-                if sample_rate:
-                    command += ["-ar", str(sample_rate)]
-                command.append(str(out))
-                if run_process(job_id, command) != 0:
-                    raise RuntimeError(f"转换失败：{file.name}")
-            # Conversion without normalization still must respect the requested output ceiling.
-            # Only files which exceed it are re-encoded from the WAV with attenuation applied.
-            for file in files:
-                output_file = output / f"{file.stem}.mp3"
-                for _ in range(3):
-                    peak = peak_of_mp3(output_file)
-                    if peak is None or peak <= ceiling:
-                        break
-                    attenuation = (peak - ceiling) + 0.2
-                    append_log(job_id, f"{file.name} 编码后峰值 {peak:.2f} dBFS，降低 {attenuation:.2f} dB 后重编码。\n")
-                    command = [ffmpeg, "-y", "-i", str(file), "-af", f"volume=-{attenuation:.4f}dB",
-                               "-c:a", "libmp3lame", "-b:a", f"{bitrate}k"]
-                    if sample_rate:
-                        command += ["-ar", str(sample_rate)]
-                    command.append(str(output_file))
-                    if run_process(job_id, command) != 0:
-                        raise RuntimeError(f"安全重编码失败：{file.name}")
-                else:
-                    raise RuntimeError(f"无法让 {file.name} 满足安全峰值上限。")
-        else:
-            if not tool_path("ffmpeg-normalize"):
-                raise ValueError("找不到 ffmpeg-normalize，请先安装依赖。")
-            # A small safety margin is used before validation. If encoding raises the decoded peak,
-            # retry the original WAV(s) with a lower target rather than re-encoding an MP3.
-            target = ceiling - 0.2
-            for attempt in range(3):
+        ffmpeg = tool_path("ffmpeg")
+        if not ffmpeg:
+            raise ValueError("找不到 FFmpeg，请先安装依赖。")
+        with tempfile.TemporaryDirectory(prefix="multitrack-wav-export-") as temp:
+            cleaned, blank = sanitized_inputs(job_id, files, Path(temp), silence_threshold)
+            active = [file for file in files if file not in blank]
+            # Empty recorder channels are still included in the share package, but they stay silent.
+            for file in blank:
+                encode_mp3(job_id, ffmpeg, cleaned[file], output / f"{file.stem}.mp3", bitrate, sample_rate)
+
+            if mode == "convert":
+                target = ceiling - 0.2
+                for file in active:
+                    output_file = output / f"{file.stem}.mp3"
+                    input_peak = peak_of_audio(cleaned[file])
+                    if input_peak is None:
+                        raise RuntimeError(f"无法测量清洗后轨道的峰值：{file.name}")
+                    # Keep the original level unless the float source already exceeds the
+                    # output ceiling. Measuring before MP3 encoding avoids hidden clipping.
+                    gain = min(0.0, target - input_peak)
+                    encode_mp3(job_id, ffmpeg, cleaned[file], output_file, bitrate, sample_rate, gain)
+                    for _ in range(3):
+                        peak = peak_of_mp3(output_file)
+                        if peak is None or peak <= ceiling:
+                            break
+                        attenuation = (peak - ceiling) + 0.2
+                        append_log(job_id, f"{file.name} 编码后峰值 {peak:.2f} dBFS，降低 {attenuation:.2f} dB 后重编码。\n")
+                        gain -= attenuation
+                        encode_mp3(job_id, ffmpeg, cleaned[file], output_file, bitrate, sample_rate, gain)
+                    else:
+                        raise RuntimeError(f"无法让 {file.name} 满足安全峰值上限。")
+            elif active:
+                # ffmpeg-normalize's peak scanner can mis-handle NaN-bearing float WAVs.
+                # Measure the cleaned PCM with FFmpeg itself and apply a deterministic linear gain.
+                target = ceiling - 0.2
+                input_peaks = {file: peak_of_audio(cleaned[file]) for file in active}
+                if any(peak is None for peak in input_peaks.values()):
+                    raise RuntimeError("无法测量清洗后轨道的峰值。")
                 if mode == "preserve":
-                    code = run_process(job_id, normalize_command(files, output, mode, target, bitrate, sample_rate))
-                    if code != 0:
-                        raise RuntimeError("归一化失败。")
+                    common_gain = target - max(input_peaks.values())
+                    gains = {file: common_gain for file in active}
                 else:
-                    for file in files:
-                        if run_process(job_id, normalize_command([file], output, mode, target, bitrate, sample_rate)) != 0:
-                            raise RuntimeError(f"归一化失败：{file.name}")
-                measured = {p.name: peak_of_mp3(output / f"{p.stem}.mp3") for p in files}
-                peaks = [value for value in measured.values() if value is not None]
-                worst = max(peaks) if peaks else None
-                append_log(job_id, "编码后峰值：" + ", ".join(f"{name} {value:.2f} dBFS" for name, value in measured.items() if value is not None) + "\n")
-                if worst is None or worst <= ceiling:
-                    break
-                target -= (worst - ceiling) + 0.2
-                append_log(job_id, f"峰值高于设定上限，使用原始 WAV 降低目标后重试（{target:.2f} dBFS）。\n")
-            else:
-                raise RuntimeError("三次安全验证后仍无法满足输出峰值上限。")
+                    gains = {file: target - input_peaks[file] for file in active}
+                append_log(job_id, "归一化增益：" + ", ".join(f"{file.name} {gain:+.2f} dB" for file, gain in gains.items()) + "\n")
+                for _ in range(3):
+                    for file in active:
+                        encode_mp3(job_id, ffmpeg, cleaned[file], output / f"{file.stem}.mp3", bitrate, sample_rate, gains[file])
+                    measured = {file: peak_of_mp3(output / f"{file.stem}.mp3") for file in active}
+                    overs = {file: peak - ceiling for file, peak in measured.items() if peak is not None and peak > ceiling}
+                    append_log(job_id, "编码后峰值：" + ", ".join(f"{file.name} {peak:.2f} dBFS" for file, peak in measured.items() if peak is not None) + "\n")
+                    if not overs:
+                        break
+                    if mode == "preserve":
+                        reduction = max(overs.values()) + 0.2
+                        gains = {file: gain - reduction for file, gain in gains.items()}
+                    else:
+                        for file, amount in overs.items():
+                            gains[file] -= amount + 0.2
+                    append_log(job_id, "峰值高于安全上限，降低增益后从清洗 WAV 重编码。\n")
+                else:
+                    raise RuntimeError("三次安全验证后仍无法满足输出峰值上限。")
 
         # Final report is intentionally based on the generated MP3 rather than the source WAV.
         final_peaks = {p.name: peak_of_mp3(output / f"{p.stem}.mp3") for p in files}
@@ -187,7 +233,7 @@ class Handler(SimpleHTTPRequestHandler):
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         if parsed.path == "/api/status":
-            self.json_response({"ffmpeg": bool(tool_path("ffmpeg")), "normalize": bool(tool_path("ffmpeg-normalize"))})
+            self.json_response({"ffmpeg": bool(tool_path("ffmpeg"))})
         elif parsed.path.startswith("/api/job/"):
             with JOBS_LOCK:
                 job = JOBS.get(parsed.path.rsplit("/", 1)[-1])
