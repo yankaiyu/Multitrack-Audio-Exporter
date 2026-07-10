@@ -14,12 +14,25 @@ fi
 /usr/bin/python3 server.py &
 SERVER_PID=$!
 
+# Python runs in the background so the browser can be opened. Ensure it does not
+# survive if this script is interrupted with Ctrl+C or its Terminal is closed.
+cleanup() {
+  if /bin/kill -0 "$SERVER_PID" 2>/dev/null; then
+    /bin/kill "$SERVER_PID" 2>/dev/null || true
+    wait "$SERVER_PID" 2>/dev/null || true
+  fi
+}
+trap 'cleanup; exit 0' HUP INT TERM
+trap cleanup EXIT
+
 # Open the browser only after the server responds, rather than relying on a fixed delay.
 for _ in {1..20}; do
   if /usr/bin/curl --silent --fail "$URL/api/status" >/dev/null 2>&1; then
     /usr/bin/open "$URL"
     wait "$SERVER_PID"
-    exit $?
+    STATUS=$?
+    trap - EXIT HUP INT TERM
+    exit "$STATUS"
   fi
   sleep 0.25
 done
