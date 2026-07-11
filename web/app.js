@@ -83,6 +83,9 @@ function syncTrim(changed = "") {
   $("#trim-fill").style.left = `${start / waveformDuration * 100}%`;
   $("#trim-fill").style.width = `${(end - start) / waveformDuration * 100}%`;
   document.querySelectorAll(".wave-track:not(.individual-trim-active) .trim-range-overlay").forEach((overlay) => {
+    // Individual trim positions this overlay with inline pixels. Clear that
+    // value when returning to shared trim so the shared marker is visible.
+    overlay.style.top = "";
     const duration = Number(overlay.dataset.duration) || waveformDuration;
     overlay.style.left = `${Math.min(100, start / duration * 100)}%`;
     overlay.style.right = `${Math.max(0, 100 - end / duration * 100)}%`;
