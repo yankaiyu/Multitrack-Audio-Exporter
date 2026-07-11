@@ -12,4 +12,5 @@ fieldset { border:0; border-top:1px solid var(--line); margin:0; padding:20px 0 
 #package-zip-option { align-items:center; display:flex; gap:8px; } #package-zip-option input { margin:0; } #package-zip-option span { display:inline; margin:0; }
 #individual-trim-option.hidden,#auto-deselect-silent-option.hidden { display:none; }
 .individual-trim-active .wave-image { margin-inline:6px; width:calc(100% - 12px); }
+.trim-marker { bottom:0; cursor:ew-resize; pointer-events:auto; position:absolute; top:0; touch-action:none; width:24px; z-index:2; }.trim-marker-start { left:-12px; }.trim-marker-end { right:-12px; }
 @media(max-width:650px) { main { margin:32px auto; }.dependencies { align-items:flex-start; flex-direction:column; }.grid { grid-template-columns:1fr; }.speed-field { grid-column:auto; } }

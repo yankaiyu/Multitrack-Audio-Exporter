@@ -6,7 +6,7 @@
 
 - Support for WAV, AIFF, FLAC, MP3, M4A, and AAC input.
 - MP3, M4A (AAC), and selectable 32-bit float, 24-bit PCM, or 16-bit PCM WAV output.
-- Waveform preview, shared and individual trim, track selection, and audible-track selection.
+- Waveform preview, direct waveform-marker dragging for shared and individual trim, track selection, and audible-track selection.
 - ZIP share packages, per-job progress, and selectable per-job track concurrency.
 - English and Simplified Chinese interface.
 
@@ -27,7 +27,7 @@
 
 - 支持 WAV、AIFF、FLAC、MP3、M4A、AAC 输入。
 - 支持 MP3、M4A（AAC）输出，以及可选 32-bit float、24-bit PCM、16-bit PCM WAV 输出。
-- 支持波形预览、统一与逐轨裁剪、轨道选择和只选择有声轨道。
+- 支持波形预览、直接拖动波形标记进行裁剪、轨道选择和只选择有声轨道。
 - 支持 ZIP 分享包、任务进度和单任务内轨道并发设置。
 - 提供英文与简体中文界面。
 
