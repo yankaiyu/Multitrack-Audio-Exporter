@@ -37,7 +37,12 @@ export async function changeLanguage(code) {
 
 export async function initializeLanguage() {
   const data = await api("/api/locales");
-  availableLanguages = data.locales;
+  const priority = ["en", "zh", "zh-Hant"];
+  availableLanguages = data.locales.sort((a, b) => {
+    const ai = priority.indexOf(a.code), bi = priority.indexOf(b.code);
+    if (ai !== -1 || bi !== -1) return (ai === -1 ? priority.length : ai) - (bi === -1 ? priority.length : bi);
+    return a.name.localeCompare(b.name);
+  });
   const systemTag = navigator.language.toLowerCase();
   const systemLanguage = systemTag.startsWith("zh-tw") || systemTag.startsWith("zh-hk") || systemTag.startsWith("zh-mo")
     ? "zh-Hant" : systemTag.split("-")[0];
