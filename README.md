@@ -12,6 +12,12 @@ A macOS-local app for batch-exporting multitrack recordings as safe, shareable f
 - <strong>Flexible preparation:</strong> waveform preview, track selection, shared or individual trim, and three level-processing modes.
 - <strong>Easy sharing:</strong> optional ZIP package and a local-only workflow.
 
+## Interface preview
+
+![Export settings — synthetic demo data](docs/screenshots/export-settings.jpg)
+
+![Waveform preview and individual trim — synthetic demo data](docs/screenshots/waveform-trim.jpg)
+
 ## Quick start
 
 1. Double-click `start.command`.
