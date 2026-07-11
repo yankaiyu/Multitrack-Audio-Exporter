@@ -103,10 +103,19 @@ function updateIndividualTrimMode() {
   document.querySelectorAll(".wave-track").forEach((row) => {
     row.classList.toggle("individual-trim-active", enabled);
     row.querySelector(".track-trim-controls").classList.toggle("hidden", !enabled);
-    row.querySelectorAll(".track-trim-start, .track-trim-end, .track-trim-start-range, .track-trim-end-range").forEach((input) => { input.disabled = !enabled; });
+    updateTrackSelectionState(row);
     if (enabled) syncIndividualTrim(row);
   });
   if (!enabled) syncTrim();
+}
+
+function updateTrackSelectionState(row) {
+  const selected = row.querySelector("input[name=selectedFiles]").checked;
+  const individualTrimEnabled = $("#individual-trim").checked;
+  row.classList.toggle("is-deselected", !selected);
+  row.querySelectorAll(".track-trim-start, .track-trim-end, .track-trim-start-range, .track-trim-end-range").forEach((input) => {
+    input.disabled = !selected || !individualTrimEnabled;
+  });
 }
 
 function renderWaveforms(preview) {
@@ -216,12 +225,16 @@ $("#trim-end-range").addEventListener("input", (event) => { $("#trim-end").value
 $("#individual-trim").addEventListener("change", updateIndividualTrimMode);
 $("#waveforms").addEventListener("input", (event) => {
   const row = event.target.closest(".wave-track");
+  if (event.target.matches("input[name=selectedFiles]")) {
+    updateTrackSelectionState(row);
+    return;
+  }
   if (event.target.matches(".track-trim-start-range")) row.querySelector(".track-trim-start").value = event.target.value;
   if (event.target.matches(".track-trim-end-range")) row.querySelector(".track-trim-end").value = event.target.value;
   if (event.target.matches(".track-trim-start, .track-trim-end, .track-trim-start-range, .track-trim-end-range")) syncIndividualTrim(row);
 });
-$("#select-all").addEventListener("click", () => document.querySelectorAll("input[name=selectedFiles]").forEach((item) => { item.checked = true; }));
-$("#select-none").addEventListener("click", () => document.querySelectorAll("input[name=selectedFiles]").forEach((item) => { item.checked = false; }));
+$("#select-all").addEventListener("click", () => document.querySelectorAll("input[name=selectedFiles]").forEach((item) => { item.checked = true; updateTrackSelectionState(item.closest(".wave-track")); }));
+$("#select-none").addEventListener("click", () => document.querySelectorAll("input[name=selectedFiles]").forEach((item) => { item.checked = false; updateTrackSelectionState(item.closest(".wave-track")); }));
 $("#open-output").addEventListener("click", async (event) => {
   try { await api("/api/open-folder", { method:"POST", body:JSON.stringify({path:event.currentTarget.dataset.path}) }); }
   catch (error) { alert(error.message); }
