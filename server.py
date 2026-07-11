@@ -205,7 +205,9 @@ def waveform_job(job_id: str, source_text: str) -> None:
                 os.replace(temporary_image, image)
             token = uuid.uuid4().hex
             WAVEFORM_FILES[token] = image
-            previews.append({"name": file.name, "duration": duration, "image": f"/api/waveform/{token}"})
+            # Use the same peak measurement used by export decisions, so the UI can
+            # optionally deselect tracks below its empty-track threshold.
+            previews.append({"name": file.name, "duration": duration, "peak": peak_of_audio(file), "image": f"/api/waveform/{token}"})
             append_log(job_id, f"波形 {index + 1}/{len(files)}：{file.name}\n")
             set_progress(job_id, round((index + 1) / len(files) * 100), f"生成波形 {index + 1}/{len(files)}")
         with JOBS_LOCK:
