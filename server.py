@@ -124,7 +124,8 @@ def peak_of_mp3(path: Path) -> float | None:
 
 
 def sanitized_inputs(job_id: str, files: list[Path], workspace: Path,
-                     silence_threshold: float, trim_start: float, trim_end: float | None, workers: int) -> tuple[dict[Path, Path], set[Path]]:
+                     silence_threshold: float, trim_start: float, trim_end: float | None, workers: int,
+                     track_trims: dict[str, dict] | None = None) -> tuple[dict[Path, Path], set[Path]]:
     """Make finite 32-bit float working WAVs and identify blank input channels.
 
     Some float recorders write NaN/Inf samples in unused channels. Those samples make
@@ -135,6 +136,7 @@ def sanitized_inputs(job_id: str, files: list[Path], workspace: Path,
     if not ffmpeg or not ffprobe:
         raise ValueError("找不到 FFmpeg / FFprobe，请先安装依赖。")
     workspace.mkdir(parents=True, exist_ok=True)
+    track_trims = track_trims or {}
     def sanitize_one(source: Path) -> tuple[Path, Path, float | None]:
         probe = subprocess.run([ffprobe, "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=channels",
                                 "-of", "default=nokey=1:noprint_wrappers=1", str(source)], capture_output=True, text=True)
@@ -144,7 +146,13 @@ def sanitized_inputs(job_id: str, files: list[Path], workspace: Path,
             raise RuntimeError(f"无法读取声道数：{source.name}")
         expressions = "|".join(f"if(isnan(val({channel}))+isinf(val({channel})),0,val({channel}))" for channel in range(channels))
         cleaned = workspace / source.name
-        trim = f"atrim=start={trim_start}" + (f":end={trim_end}" if trim_end is not None else "")
+        per_track = track_trims.get(source.name, {})
+        source_start = float(per_track.get("start", trim_start))
+        raw_end = per_track.get("end", trim_end)
+        source_end = float(raw_end) if raw_end not in (None, "") else None
+        if source_start < 0 or (source_end is not None and source_end <= source_start):
+            raise ValueError(f"{source.name} 的裁剪结束时间必须大于开始时间。")
+        trim = f"atrim=start={source_start}" + (f":end={source_end}" if source_end is not None else "")
         command = [ffmpeg, "-hide_banner", "-y", "-i", str(source), "-af", f"{trim},aeval=exprs='{expressions}':c=same",
                    "-c:a", "pcm_f32le", str(cleaned)]
         if run_process(job_id, command) != 0:
@@ -264,6 +272,9 @@ def _convert_job(job_id: str, options: dict) -> None:
             raise ValueError("无效的并发轨道数。")
         trim_start = float(options.get("trimStart") or 0)
         trim_end = float(options["trimEnd"]) if options.get("trimEnd") else None
+        track_trims = options.get("trackTrims") or {}
+        if not isinstance(track_trims, dict):
+            raise ValueError("逐轨裁剪数据无效。")
         if trim_start < 0 or (trim_end is not None and trim_end <= trim_start):
             raise ValueError("裁剪结束时间必须大于开始时间。")
         output = source / "normalized_mp3"
@@ -276,7 +287,7 @@ def _convert_job(job_id: str, options: dict) -> None:
             raise ValueError("找不到 FFmpeg，请先安装依赖。")
         with tempfile.TemporaryDirectory(prefix="multitrack-wav-export-") as temp:
             set_progress(job_id, 5, "清洗浮点样本并测量峰值")
-            cleaned, blank = sanitized_inputs(job_id, files, Path(temp), silence_threshold, trim_start, trim_end, workers)
+            cleaned, blank = sanitized_inputs(job_id, files, Path(temp), silence_threshold, trim_start, trim_end, workers, track_trims)
             set_progress(job_id, 20, "浮点样本清洗完成")
             active = [file for file in files if file not in blank]
             # Empty recorder channels are still included in the share package, but they stay silent.

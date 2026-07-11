@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import struct
+import subprocess
 import tempfile
 import unittest
 import zipfile
@@ -46,6 +47,19 @@ class FloatAudioPipelineTests(unittest.TestCase):
         cleaned, blank = server.sanitized_inputs(self.job_id, [wav], self.root / "work", -40, 0, None, 1)
         self.assertNotIn(wav, blank)
         self.assertAlmostEqual(server.peak_of_audio(cleaned[wav]), -20.0, places=1)
+
+    def test_individual_trim_is_applied_to_its_named_track(self) -> None:
+        wav = self.root / "longer.wav"
+        write_float_wav(wav, [0.2] * 4_800)  # 0.1 seconds
+        cleaned, _ = server.sanitized_inputs(
+            self.job_id, [wav], self.root / "individual-work", -40, 0, None, 1,
+            {wav.name: {"start": "0.020", "end": "0.070"}},
+        )
+        ffprobe = server.tool_path("ffprobe")
+        duration = subprocess.run([ffprobe, "-v", "error", "-show_entries", "format=duration",
+                                   "-of", "default=nokey=1:noprint_wrappers=1", str(cleaned[wav])],
+                                  capture_output=True, text=True, check=True)
+        self.assertAlmostEqual(float(duration.stdout.strip()), 0.050, places=3)
 
     def test_selected_hot_track_exports_below_safety_ceiling(self) -> None:
         source = self.root / "source"
