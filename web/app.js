@@ -1,6 +1,7 @@
 import { $, api } from "./core.js";
 import { changeLanguage, currentLanguage, initializeLanguage, t } from "./i18n.js";
 import { refreshStatus, watch } from "./jobs.js";
+import { levelOptionState } from "./level-options.js";
 
 const ZIP_PREFERENCE_KEY = "packageZip";
 const SPLIT_STEREO_PREFERENCE_KEY = "splitStereo";
@@ -89,10 +90,10 @@ function updateLevelOptions() {
   const safety = $("#enforce-safety");
   const previewGain = $("#apply-preview-gain");
   if (!safety || !previewGain) return;
-  safety.disabled = false;
-  const previewGainAllowed = mode === "original" && waveformTracks.length > 0;
-  previewGain.disabled = !previewGainAllowed;
-  if (!previewGainAllowed) previewGain.checked = false;
+  const state = levelOptionState(mode, waveformTracks.length > 0);
+  safety.disabled = state.safetyDisabled;
+  previewGain.disabled = state.previewGainDisabled;
+  if (state.previewGainDisabled) previewGain.checked = false;
 }
 
 function syncTrim(changed = "") {

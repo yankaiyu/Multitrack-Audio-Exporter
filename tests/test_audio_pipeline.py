@@ -60,6 +60,12 @@ class LocaleTests(unittest.TestCase):
             missing = sorted(key for key in used if not isinstance(strings.get(key), str) or not strings[key].strip())
             self.assertEqual(missing, [], f"{locale['code']} has no translation/fallback for: {missing}")
 
+    def test_level_option_policy_contract_covers_mode_matrix(self) -> None:
+        """The extracted frontend policy must preserve the documented toggle matrix."""
+        policy = (server.WEB_ROOT / "level-options.js").read_text(encoding="utf-8")
+        self.assertIn('mode !== "original" || !waveformLoaded', policy)
+        self.assertIn('safetyDisabled: false', policy)
+
 @unittest.skipUnless(server.tool_path("ffmpeg") and server.tool_path("ffprobe"), "FFmpeg and FFprobe are required")
 class FloatAudioPipelineTests(unittest.TestCase):
     def setUp(self) -> None:
