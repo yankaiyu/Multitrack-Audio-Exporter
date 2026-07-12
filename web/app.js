@@ -201,7 +201,10 @@ function updateTrackSelectionState(row) {
   });
   const preview = row.querySelector(".track-preview-button");
   if (preview) preview.disabled = !selected;
-  if (!selected) stopTrackPreview(row, true);
+  if (!selected) {
+    stopTrackPreview(row, true);
+    row.querySelector(".playback-marker")?.classList.add("hidden");
+  }
 }
 
 function previewBounds(row) {
@@ -217,11 +220,9 @@ function previewBounds(row) {
 
 function setPreviewButton(row, playing) {
   const button = row.querySelector(".track-preview-button");
-  const marker = row.querySelector(".playback-marker");
   if (!button) return;
   button.classList.toggle("is-playing", playing);
   button.textContent = playing ? t("previewPause") : t("previewPlay");
-  marker?.classList.toggle("hidden", !playing);
 }
 
 function updatePlaybackMarker(row) {
@@ -253,6 +254,7 @@ function stopTrackPreview(row, reset = false) {
   if (reset && audio.readyState >= HTMLMediaElement.HAVE_METADATA) {
     audio.currentTime = previewBounds(row).start;
     audio.dataset.previewPosition = String(audio.currentTime);
+    row.querySelector(".playback-marker")?.classList.remove("hidden");
   }
   setPreviewButton(row, false);
 }
@@ -269,6 +271,7 @@ function startTrackPreview(row) {
     audio.currentTime = start;
     audio.play().then(() => {
       setPreviewButton(row, true);
+      row.querySelector(".playback-marker")?.classList.remove("hidden");
       updatePlaybackMarker(row);
     }).catch(() => {
       setPreviewButton(row, false);
