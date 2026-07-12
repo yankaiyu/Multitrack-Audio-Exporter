@@ -2,12 +2,12 @@ import { $, api } from "./core.js";
 import { changeLanguage, currentLanguage, initializeLanguage, t } from "./i18n.js";
 import { refreshStatus, watch } from "./jobs.js";
 import { levelOptionState } from "./level-options.js";
+import { applyPreviewAudioSettings, PREVIEW_VOLUME_MAX, PREVIEW_VOLUME_MIN, resumePreviewAudio } from "./preview-audio.js";
+import { normalizeTrimRange, timeAtPointer } from "./trim-geometry.js";
 
 const ZIP_PREFERENCE_KEY = "packageZip";
 const SPLIT_STEREO_PREFERENCE_KEY = "splitStereo";
 const PREVIEW_LIMITER_PREFERENCE_KEY = "previewLimiter";
-const PREVIEW_VOLUME_MIN = -60;
-const PREVIEW_VOLUME_MAX = 12;
 let selectingFolder = false;
 
 let waveformTracks = [];
@@ -15,42 +15,6 @@ let waveformDuration = 0;
 let globalMarkerDrag = null;
 let playbackDrag = null;
 let lastPreviewRow = null;
-let previewAudioContext = null;
-const previewAudioGraphs = new WeakMap();
-
-function previewGraph(audio) {
-  if (previewAudioGraphs.has(audio)) return previewAudioGraphs.get(audio);
-  try {
-    previewAudioContext ||= new (window.AudioContext || window.webkitAudioContext)();
-    const source = previewAudioContext.createMediaElementSource(audio);
-    const gain = previewAudioContext.createGain();
-    const limiter = previewAudioContext.createDynamicsCompressor();
-    limiter.threshold.value = -1;
-    limiter.knee.value = 0;
-    limiter.ratio.value = 20;
-    limiter.attack.value = 0.001;
-    limiter.release.value = 0.08;
-    source.connect(gain).connect(limiter).connect(previewAudioContext.destination);
-    const graph = { gain, limiter };
-    previewAudioGraphs.set(audio, graph);
-    return graph;
-  } catch (_) {
-    return null;
-  }
-}
-
-function applyPreviewAudioSettings(row) {
-  const audio = row.querySelector(".track-preview-audio");
-  const graph = audio && previewGraph(audio);
-  if (!graph) return;
-  const volume = Number(row.querySelector(".track-preview-volume input[type=range]")?.value) || 0;
-  graph.gain.gain.value = Math.pow(10, volume / 20);
-  const enabled = $("#preview-limiter")?.checked ?? true;
-  graph.limiter.threshold.value = enabled ? -1 : 0;
-  graph.limiter.ratio.value = enabled ? 20 : 1;
-  graph.limiter.knee.value = enabled ? 0 : 30;
-}
-
 function resetWaveformState() {
   document.querySelectorAll(".track-preview-audio").forEach((audio) => audio.pause());
   waveformTracks = [];
@@ -98,12 +62,7 @@ function updateLevelOptions() {
 
 function syncTrim(changed = "") {
   if (!waveformDuration) return;
-  let start = Number($("#trim-start").value) || 0;
-  let end = Number($("#trim-end").value) || waveformDuration;
-  start = Math.max(0, Math.min(start, waveformDuration));
-  end = Math.max(0, Math.min(end, waveformDuration));
-  if (changed === "start" && start >= end) end = Math.min(waveformDuration, start + 0.001);
-  if (changed === "end" && end <= start) start = Math.max(0, end - 0.001);
+  const { start, end } = normalizeTrimRange($("#trim-start").value, $("#trim-end").value || waveformDuration, waveformDuration, changed);
   $("#trim-start").value = start.toFixed(3);
   $("#trim-end").value = end.toFixed(3);
   $("#trim-start-range").value = start;
@@ -136,7 +95,7 @@ function setSharedTrimFromMarker(row, marker, clientX) {
   const bounds = waveform.getBoundingClientRect();
   const duration = Number(row.dataset.duration) || waveformDuration;
   if (!bounds.width || !duration) return;
-  const time = Math.max(0, Math.min(waveformDuration, (clientX - bounds.left) / bounds.width * duration));
+  const time = timeAtPointer(clientX, bounds, duration);
   const isStart = marker.dataset.marker === "start";
   $(isStart ? "#trim-start" : "#trim-end").value = time;
   syncTrim(isStart ? "start" : "end");
@@ -148,7 +107,7 @@ function setIndividualTrimFromMarker(row, marker, clientX) {
   const bounds = waveform.getBoundingClientRect();
   const duration = Number(row.dataset.duration);
   if (!bounds.width || !duration) return;
-  const time = Math.max(0, Math.min(duration, (clientX - bounds.left) / bounds.width * duration));
+  const time = timeAtPointer(clientX, bounds, duration);
   row.querySelector(marker.dataset.marker === "start" ? ".track-trim-start" : ".track-trim-end").value = time;
   syncIndividualTrim(row);
 }
@@ -203,11 +162,7 @@ function endPlaybackDrag() {
 
 function syncIndividualTrim(row) {
   const duration = Number(row.dataset.duration);
-  let start = Number(row.querySelector(".track-trim-start").value) || 0;
-  let end = Number(row.querySelector(".track-trim-end").value) || duration;
-  start = Math.max(0, Math.min(start, duration));
-  end = Math.max(0, Math.min(end, duration));
-  if (start >= end) end = Math.min(duration, start + 0.001);
+  const { start, end } = normalizeTrimRange(row.querySelector(".track-trim-start").value, row.querySelector(".track-trim-end").value || duration, duration);
   row.querySelector(".track-trim-start").value = start.toFixed(3);
   row.querySelector(".track-trim-end").value = end.toFixed(3);
   row.querySelector(".track-trim-start-range").value = start;
@@ -359,8 +314,8 @@ function startTrackPreview(row) {
   const start = Number.isFinite(savedPosition) && savedPosition >= bounds.start && savedPosition < bounds.end
     ? savedPosition : bounds.start;
   const play = () => {
-    applyPreviewAudioSettings(row);
-    previewAudioContext?.resume();
+    applyPreviewAudioSettings(row, $("#preview-limiter"));
+    resumePreviewAudio();
     audio.currentTime = start;
     audio.play().then(() => {
       setPreviewButton(row, true);
@@ -422,13 +377,13 @@ function renderWaveforms(preview) {
     const volumeNumber = row.querySelector(".track-preview-volume-number");
     volume.addEventListener("input", () => {
       volumeNumber.value = volume.value;
-      applyPreviewAudioSettings(row);
+      applyPreviewAudioSettings(row, $("#preview-limiter"));
     });
     volumeNumber.addEventListener("input", () => {
       volume.value = Math.max(PREVIEW_VOLUME_MIN, Math.min(PREVIEW_VOLUME_MAX, Number(volumeNumber.value) || 0));
-      applyPreviewAudioSettings(row);
+      applyPreviewAudioSettings(row, $("#preview-limiter"));
     });
-    applyPreviewAudioSettings(row);
+    applyPreviewAudioSettings(row, $("#preview-limiter"));
     audio.addEventListener("timeupdate", () => {
       audio.dataset.previewPosition = String(audio.currentTime);
       const bounds = previewBounds(row);
@@ -521,7 +476,7 @@ const savedPreviewLimiter = localStorage.getItem(PREVIEW_LIMITER_PREFERENCE_KEY)
 if (savedPreviewLimiter !== null) previewLimiter.checked = savedPreviewLimiter === "true";
 previewLimiter.addEventListener("change", () => {
   localStorage.setItem(PREVIEW_LIMITER_PREFERENCE_KEY, String(previewLimiter.checked));
-  document.querySelectorAll(".wave-track").forEach(applyPreviewAudioSettings);
+  document.querySelectorAll(".wave-track").forEach((row) => applyPreviewAudioSettings(row, previewLimiter));
 });
 $("#output-format").addEventListener("change", updateOutputFormat);
 $("#load-waveforms").addEventListener("click", async () => {

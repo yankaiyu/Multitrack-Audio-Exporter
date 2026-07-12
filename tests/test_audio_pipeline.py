@@ -66,6 +66,11 @@ class LocaleTests(unittest.TestCase):
         self.assertIn('mode !== "original" || !waveformLoaded', policy)
         self.assertIn('safetyDisabled: false', policy)
 
+    def test_trim_geometry_module_exposes_pure_helpers(self) -> None:
+        geometry = (server.WEB_ROOT / "trim-geometry.js").read_text(encoding="utf-8")
+        for export in ("clampTime", "normalizeTrimRange", "timeAtPointer"):
+            self.assertIn(f"export function {export}", geometry)
+
 @unittest.skipUnless(server.tool_path("ffmpeg") and server.tool_path("ffprobe"), "FFmpeg and FFprobe are required")
 class FloatAudioPipelineTests(unittest.TestCase):
     def setUp(self) -> None:
