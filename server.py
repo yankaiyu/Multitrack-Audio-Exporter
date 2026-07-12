@@ -11,7 +11,6 @@ import subprocess
 import sys
 import tempfile
 import threading
-import time
 import uuid
 import zipfile
 from collections import defaultdict
@@ -33,8 +32,6 @@ WAVEFORM_FILES: dict[str, Path] = {}
 AUDIO_FILES: dict[str, Path] = {}
 SOURCE_LOCKS: dict[str, threading.Lock] = {}
 SOURCE_LOCKS_LOCK = threading.Lock()
-LAST_CLIENT_ACTIVITY = time.monotonic()
-IDLE_SHUTDOWN_SECONDS = 60
 LOCALE_CACHE: dict[str, dict[str, str]] = {}
 
 
@@ -104,28 +101,11 @@ def set_progress(job_id: str, value: int, label: str) -> None:
             job["progressLabel"] = label
 
 
-def mark_client_activity() -> None:
-    global LAST_CLIENT_ACTIVITY
-    LAST_CLIENT_ACTIVITY = time.monotonic()
-
-
 def source_lock(source: Path) -> threading.Lock:
     """Return a stable lock so two browser tasks cannot write one output folder."""
     key = str(source.resolve())
     with SOURCE_LOCKS_LOCK:
         return SOURCE_LOCKS.setdefault(key, threading.Lock())
-
-
-def idle_shutdown_monitor(httpd: ThreadingHTTPServer) -> None:
-    """Stop the local-only server after its last browser page has gone away."""
-    while True:
-        time.sleep(2)
-        with JOBS_LOCK:
-            processing = any(job.get("status") == "running" for job in JOBS.values())
-        if not processing and time.monotonic() - LAST_CLIENT_ACTIVITY >= IDLE_SHUTDOWN_SECONDS:
-            print("No browser activity detected; stopping local server.")
-            httpd.shutdown()
-            return
 
 
 def run_process(job_id: str, command: list[str], cwd: Path | None = None) -> int:
@@ -568,7 +548,6 @@ class Handler(SimpleHTTPRequestHandler):
                 remaining -= len(chunk)
 
     def do_GET(self) -> None:
-        mark_client_activity()
         parsed = urlparse(self.path)
         if parsed.path == "/api/status":
             self.json_response({"ffmpeg": bool(tool_path("ffmpeg"))})
@@ -599,7 +578,6 @@ class Handler(SimpleHTTPRequestHandler):
             super().do_GET()
 
     def do_HEAD(self) -> None:
-        mark_client_activity()
         parsed = urlparse(self.path)
         if parsed.path.startswith("/api/audio/"):
             audio = AUDIO_FILES.get(parsed.path.rsplit("/", 1)[-1])
@@ -612,7 +590,6 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self) -> None:
         try:
-            mark_client_activity()
             data = self.read_json()
             if self.path == "/api/convert":
                 job_id = uuid.uuid4().hex
@@ -621,8 +598,6 @@ class Handler(SimpleHTTPRequestHandler):
                                     "progressLabel": localized(data.get("language"), "waitingToStart"), "language": data.get("language", "en")}
                 threading.Thread(target=convert_job, args=(job_id, data), daemon=True).start()
                 self.json_response({"job": job_id})
-            elif self.path == "/api/heartbeat":
-                self.json_response({"ok": True})
             elif self.path == "/api/waveforms":
                 job_id = uuid.uuid4().hex
                 with JOBS_LOCK:
@@ -672,5 +647,4 @@ if __name__ == "__main__":
     port = 8765
     httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     print(f"Multitrack Audio Exporter is running at http://127.0.0.1:{port}")
-    threading.Thread(target=idle_shutdown_monitor, args=(httpd,), daemon=True).start()
     httpd.serve_forever()

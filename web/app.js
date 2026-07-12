@@ -6,14 +6,11 @@ const ZIP_PREFERENCE_KEY = "packageZip";
 const SPLIT_STEREO_PREFERENCE_KEY = "splitStereo";
 let selectingFolder = false;
 
-function sendHeartbeat() {
-  api("/api/heartbeat", { method:"POST", body:"{}" }).catch(() => {});
-}
-
 let waveformTracks = [];
 let waveformDuration = 0;
 let globalMarkerDrag = null;
 let playbackDrag = null;
+let lastPreviewRow = null;
 
 function resetWaveformState() {
   document.querySelectorAll(".track-preview-audio").forEach((audio) => audio.pause());
@@ -21,6 +18,7 @@ function resetWaveformState() {
   waveformDuration = 0;
   globalMarkerDrag = null;
   playbackDrag = null;
+  lastPreviewRow = null;
   $("#waveforms").innerHTML = "";
   $("#waveform-status").textContent = "";
   $("#trim-controls").classList.add("hidden");
@@ -32,6 +30,10 @@ function resetWaveformState() {
   $("#select-none").classList.add("hidden");
   $("#trim-start").value = "0";
   $("#trim-end").value = "";
+  $("#trim-start-range").value = "0";
+  $("#trim-end-range").value = "0";
+  $("#trim-fill").style.left = "0%";
+  $("#trim-fill").style.width = "0%";
 }
 
 function updateOutputFormat() {
@@ -67,6 +69,7 @@ function syncTrim(changed = "") {
 }
 
 function setSharedTrimFromMarker(row, marker, clientX) {
+  lastPreviewRow = row;
   const waveform = row.querySelector(".wave-image");
   const bounds = waveform.getBoundingClientRect();
   const duration = Number(row.dataset.duration) || waveformDuration;
@@ -78,6 +81,7 @@ function setSharedTrimFromMarker(row, marker, clientX) {
 }
 
 function setIndividualTrimFromMarker(row, marker, clientX) {
+  lastPreviewRow = row;
   const waveform = row.querySelector(".wave-image");
   const bounds = waveform.getBoundingClientRect();
   const duration = Number(row.dataset.duration);
@@ -119,6 +123,7 @@ function beginPlaybackDrag(event) {
   const audio = row?.querySelector(".track-preview-audio");
   if (!row || row.classList.contains("is-deselected") || !audio || audio.readyState < HTMLMediaElement.HAVE_METADATA) return;
   event.preventDefault();
+  lastPreviewRow = row;
   playbackDrag = { row };
   if (event.pointerId !== undefined) marker.setPointerCapture?.(event.pointerId);
   seekPlaybackFromPointer(row, event.clientX);
@@ -416,24 +421,36 @@ $("#waveforms").addEventListener("input", (event) => {
     updateTrackSelectionState(row);
     return;
   }
+  if (row) lastPreviewRow = row;
   if (event.target.matches(".track-trim-start-range")) row.querySelector(".track-trim-start").value = event.target.value;
   if (event.target.matches(".track-trim-end-range")) row.querySelector(".track-trim-end").value = event.target.value;
   if (event.target.matches(".track-trim-start, .track-trim-end, .track-trim-start-range, .track-trim-end-range")) syncIndividualTrim(row);
 });
 $("#waveforms").addEventListener("click", (event) => {
   const button = event.target.closest(".track-preview-button");
-  if (button) toggleTrackPreview(button.closest(".wave-track"));
+  if (button) {
+    lastPreviewRow = button.closest(".wave-track");
+    toggleTrackPreview(lastPreviewRow);
+  }
   const waveform = event.target.closest(".wave-image");
   if (waveform) {
     const row = waveform.closest(".wave-track");
     const audio = row?.querySelector(".track-preview-audio");
     if (!row || row.classList.contains("is-deselected") || !audio) return;
+    lastPreviewRow = row;
     if (audio.readyState >= HTMLMediaElement.HAVE_METADATA) seekPlaybackFromPointer(row, event.clientX);
     else {
       audio.addEventListener("loadedmetadata", () => seekPlaybackFromPointer(row, event.clientX), { once: true });
       audio.load();
     }
   }
+});
+window.addEventListener("keydown", (event) => {
+  if (event.code !== "Space" || event.repeat) return;
+  if (["INPUT", "SELECT", "TEXTAREA", "BUTTON"].includes(event.target.tagName) || event.target.isContentEditable) return;
+  if (!lastPreviewRow || lastPreviewRow.classList.contains("is-deselected")) return;
+  event.preventDefault();
+  toggleTrackPreview(lastPreviewRow);
 });
 function beginSharedMarkerDrag(event) {
   const marker = event.target.closest(".trim-marker");
@@ -506,10 +523,6 @@ splitStereoCheckbox.addEventListener("change", () => {
   resetWaveformState();
   $("#waveform-status").textContent = t("splitStereoReloadWaveform");
 });
-initializeLanguage().then(() => {
-  sendHeartbeat();
-  const heartbeatTimer = setInterval(sendHeartbeat, 5000);
-  window.addEventListener("pagehide", () => clearInterval(heartbeatTimer));
-}).catch((error) => {
+initializeLanguage().catch((error) => {
   $("#dependency-status").textContent = `Unable to load interface language: ${error.message}`;
 });
