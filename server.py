@@ -454,6 +454,8 @@ def _convert_job(job_id: str, options: dict) -> None:
                 # Peak scanners can mis-handle NaN-bearing float WAVs.
                 # Measure the cleaned PCM with FFmpeg itself and apply a deterministic linear gain.
                 target = ceiling - 0.2
+                if not enforce_safety:
+                    append_localized_log(job_id, "safetyCheckSkipped", ceiling=f"{ceiling:.1f}")
                 input_peaks = {file: peak_of_audio(cleaned[file]) for file in active}
                 if any(peak is None for peak in input_peaks.values()):
                     raise RuntimeError(localized(job_language(job_id), "couldNotMeasurePeak"))

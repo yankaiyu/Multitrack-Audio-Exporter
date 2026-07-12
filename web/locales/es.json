@@ -23,6 +23,7 @@
     "applyPreviewGain": "Aplicar el volumen de preescucha a la exportación",
     "applyPreviewGainHelp": "Primero carga las formas de onda.",
     "enforceSafety": "Mantener la salida por debajo del pico seguro",
+    "enforceSafetyHelp": "Al desactivarlo se omiten la verificación final y los reintentos; el límite elegido sigue siendo el objetivo inicial.",
     "convert": "Mantener niveles dentro de lo seguro",
     "outputFormat": "Formato de salida",
     "sampleRate": "Frecuencia de muestreo",

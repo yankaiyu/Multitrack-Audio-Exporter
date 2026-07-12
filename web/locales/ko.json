@@ -23,6 +23,7 @@
     "applyPreviewGain": "미리듣기 볼륨을 내보내기에 적용",
     "applyPreviewGainHelp": "먼저 파형을 불러오세요.",
     "enforceSafety": "출력을 안전 피크 이하로 유지",
+    "enforceSafetyHelp": "끄면 최종 피크 검증과 재시도를 건너뜁니다. 선택한 상한은 초기 목표로 계속 사용됩니다.",
     "convert": "안전한 범위에서 레벨 유지",
     "outputFormat": "출력 형식",
     "sampleRate": "샘플레이트",

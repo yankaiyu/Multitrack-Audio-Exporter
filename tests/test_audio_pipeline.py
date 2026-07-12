@@ -177,6 +177,20 @@ class FloatAudioPipelineTests(unittest.TestCase):
         self.assertEqual(server.JOBS[self.job_id]["status"], "done", server.JOBS[self.job_id]["log"])
         self.assertGreater(server.peak_of_audio(output), -2.0)
 
+    def test_relative_mode_without_safety_uses_selected_ceiling(self) -> None:
+        source = self.root / "relative-no-safety"
+        source.mkdir()
+        wav = source / "track.wav"
+        write_float_wav(wav, [0.25] * 4_800)
+        server.convert_job(self.job_id, {
+            "source": str(source), "mode": "preserve", "outputFormat": "wav", "wavDepth": "float32",
+            "bitrate": "256", "sampleRate": "", "ceiling": "-0.3", "silenceThreshold": "-40", "workers": "1",
+            "enforceSafety": "off",
+        })
+        output = source / "normalized_audio" / "track.wav"
+        self.assertEqual(server.JOBS[self.job_id]["status"], "done", server.JOBS[self.job_id]["log"])
+        self.assertAlmostEqual(server.peak_of_audio(output), -0.5, places=1)
+
     def test_m4a_output_is_safe(self) -> None:
         source = self.root / "m4a-output"
         source.mkdir()

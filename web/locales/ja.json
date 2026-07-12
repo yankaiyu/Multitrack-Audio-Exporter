@@ -23,6 +23,7 @@
     "applyPreviewGain": "プレビュー音量を書き出しに適用",
     "applyPreviewGainHelp": "先に波形を読み込んでください。",
     "enforceSafety": "出力を安全ピーク以下にする",
+    "enforceSafetyHelp": "オフにすると最終ピーク検証と再試行を省略します。選択した上限は初期目標として使われます。",
     "convert": "安全な範囲でレベルを保持",
     "outputFormat": "出力形式",
     "sampleRate": "サンプルレート",

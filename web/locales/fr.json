@@ -23,6 +23,7 @@
     "applyPreviewGain": "Appliquer le volume d’aperçu à l’exportation",
     "applyPreviewGainHelp": "Chargez d’abord les formes d’onde.",
     "enforceSafety": "Maintenir la sortie sous le pic maximal sûr",
+    "enforceSafetyHelp": "Désactivé, le contrôle final et les nouvelles tentatives sont ignorés ; le plafond choisi reste la cible initiale.",
     "convert": "Conserver les niveaux dans la limite de sécurité",
     "outputFormat": "Format de sortie",
     "sampleRate": "Fréquence d’échantillonnage",

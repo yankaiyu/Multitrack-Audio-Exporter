@@ -24,6 +24,7 @@
     "applyPreviewGain": "將試聽音量套用至匯出",
     "applyPreviewGainHelp": "需要先載入波形。",
     "enforceSafety": "確保輸出低於安全峰值",
+    "enforceSafetyHelp": "關閉後跳過最終峰值複檢和重試；所選安全峰值仍作為初始目標。",
     "convert": "盡量保持原音量，僅安全降幅",
     "outputFormat": "輸出格式",
     "sampleRate": "取樣率",

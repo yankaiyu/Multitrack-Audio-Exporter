@@ -89,9 +89,7 @@ function updateLevelOptions() {
   const safety = $("#enforce-safety");
   const previewGain = $("#apply-preview-gain");
   if (!safety || !previewGain) return;
-  const safetyLocked = mode === "per_track";
-  safety.disabled = safetyLocked;
-  if (safetyLocked) safety.checked = true;
+  safety.disabled = false;
   const previewGainAllowed = mode === "original" && waveformTracks.length > 0;
   previewGain.disabled = !previewGainAllowed;
   if (!previewGainAllowed) previewGain.checked = false;

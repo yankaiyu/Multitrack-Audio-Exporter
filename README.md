@@ -66,7 +66,7 @@ See [CHANGELOG.md](CHANGELOG.md) for detailed behavior and release notes.
 - <strong>输出：</strong> MP3、M4A（AAC），或 32-bit float、24-bit PCM、16-bit PCM WAV。
 - <strong>灵活准备：</strong> 波形预览、单轨裁剪试听、轨道选择、统一或逐轨裁剪，以及三种音量处理模式。
 - <strong>安全试听：</strong> 每轨可独立调整 −60 dB 至 +12 dB 的试听音量，并可选开启试听限幅器。
-- <strong>灵活音量：</strong> 可逐轨标准化、保持相对响度或跳过标准化，并分别选择是否应用试听增益及确保通过安全峰值检测。
+- <strong>灵活音量：</strong> 可逐轨标准化、保持相对响度或跳过标准化，并分别选择是否应用试听增益及是否进行最终安全峰值复检。
 - <strong>立体声拆分：</strong> 可将立体声文件拆为独立的左右单声道轨道，分别预览、裁剪和导出。
 - <strong>方便分享：</strong> 可选 ZIP 分享包，全部本机处理。
 
