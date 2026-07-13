@@ -86,16 +86,15 @@ function syncSharedOverlay(row, start, end) {
   const overlay = row.querySelector(".trim-range-overlay");
   const waveform = row.querySelector(".wave-image");
   if (!overlay || !waveform) return;
-  const rowBounds = row.getBoundingClientRect();
+  const container = waveform.parentElement;
+  const containerBounds = container.getBoundingClientRect();
   const waveformBounds = waveform.getBoundingClientRect();
   const duration = Number(row.dataset.duration) || waveformDuration;
-  if (!duration || !waveformBounds.width || !rowBounds.width) return;
-  const left = waveformBounds.left - rowBounds.left + start / duration * waveformBounds.width;
-  const right = rowBounds.right - waveformBounds.right + (1 - end / duration) * waveformBounds.width;
-  overlay.style.top = `${waveformBounds.top - rowBounds.top}px`;
-  overlay.style.bottom = `${rowBounds.bottom - waveformBounds.bottom}px`;
-  overlay.style.left = `${left}px`;
-  overlay.style.right = `${Math.max(0, right)}px`;
+  if (!duration || !waveformBounds.width || !containerBounds.width) return;
+  overlay.style.top = `${waveformBounds.top - containerBounds.top}px`;
+  overlay.style.bottom = `${containerBounds.bottom - waveformBounds.bottom}px`;
+  overlay.style.left = `${start / duration * waveformBounds.width}px`;
+  overlay.style.right = `${Math.max(0, waveformBounds.width - end / duration * waveformBounds.width)}px`;
 }
 
 function setSharedTrimFromMarker(row, marker, clientX) {
@@ -204,16 +203,17 @@ function syncIndividualTrim(row) {
 function syncIndividualOverlay(row, start, end, fill = row.querySelector(".track-range-fill")) {
   const duration = Number(row.dataset.duration);
   const overlay = row.querySelector(".trim-range-overlay");
-  const rowBounds = row.getBoundingClientRect();
   const waveform = row.querySelector(".wave-image");
+  const container = waveform.parentElement;
+  const containerBounds = container.getBoundingClientRect();
   const waveformBounds = waveform.getBoundingClientRect();
   const trackBounds = row.querySelector(".track-range-controls").getBoundingClientRect();
   // The waveform is nested in a wrapper, so offsetTop is relative to that
   // wrapper rather than the track. Use viewport rectangles to keep the trim
   // overlay exactly within the waveform and away from the controls above it.
-  overlay.style.top = `${waveformBounds.top - rowBounds.top}px`;
-  overlay.style.bottom = `${rowBounds.bottom - waveformBounds.bottom}px`;
-  if (!waveformBounds.width || !rowBounds.width) {
+  overlay.style.top = `${waveformBounds.top - containerBounds.top}px`;
+  overlay.style.bottom = `${containerBounds.bottom - waveformBounds.bottom}px`;
+  if (!waveformBounds.width || !containerBounds.width) {
     overlay.style.left = `${start / duration * 100}%`;
     overlay.style.right = `${Math.max(0, 100 - end / duration * 100)}%`;
     fill.style.left = `${start / duration * 100}%`;
@@ -222,12 +222,11 @@ function syncIndividualOverlay(row, start, end, fill = row.querySelector(".track
   }
   // The waveform image is the source of truth: its borders must always mark
   // 0% and 100% so the visual trim range accurately covers the audio preview.
-  const waveformStart = waveformBounds.left - rowBounds.left;
-  const left = waveformStart + start / duration * waveformBounds.width;
-  const endPosition = waveformStart + end / duration * waveformBounds.width;
+  const left = start / duration * waveformBounds.width;
+  const endPosition = end / duration * waveformBounds.width;
   const fillStart = waveformBounds.left - trackBounds.left + start / duration * waveformBounds.width;
   const fillEnd = waveformBounds.left - trackBounds.left + end / duration * waveformBounds.width;
-  const right = rowBounds.width - endPosition;
+  const right = waveformBounds.width - endPosition;
   fill.style.left = `${fillStart}px`;
   fill.style.width = `${Math.max(0, fillEnd - fillStart)}px`;
   overlay.style.left = `${left}px`;
@@ -446,7 +445,7 @@ function renderWaveforms(preview) {
     const trackId = encodeURIComponent(track.name);
     const displayDuration = displayTimeLimit(track.duration);
   const channelGuide = track.stereo ? `<div class="stereo-channel-guide" aria-hidden="true"><span class="stereo-channel-label stereo-channel-label-left">L</span><span class="stereo-channel-label stereo-channel-label-right">R</span><span class="stereo-channel-divider"></span></div>` : "";
-    return `<div class="wave-track" data-track="${trackId}" data-duration="${track.duration}"><label class="wave-name track-select"><input type="checkbox" name="selectedFiles" value="${track.name}" checked />${track.name}</label><button class="track-collapse-button secondary" type="button" aria-expanded="true" title="${t("collapseTrack")}">${t("collapseTrack")}</button><button class="track-preview-button secondary" type="button">${t("previewPlay")}</button><audio class="track-preview-audio" preload="metadata" src="${track.audio}"></audio><div class="track-trim-controls hidden"><label>${t("trackStart")}<input class="track-trim-start" type="number" min="0" max="${displayDuration}" step="0.001" value="0" /></label><label>${t("trackEnd")}<input class="track-trim-end" type="number" min="0" max="${displayDuration}" step="0.001" value="${track.duration.toFixed(3)}" /></label><div class="track-range-controls"><div class="track-range-rail"></div><div class="track-range-fill"></div><input class="track-trim-start-range" type="range" min="0" max="${displayDuration}" step="0.001" value="0" /><input class="track-trim-end-range" type="range" min="0" max="${displayDuration}" step="0.001" value="${track.duration.toFixed(3)}" /></div></div><div class="wave-image-wrap"><img class="wave-image" src="${track.image}" alt="${track.name}" />${channelGuide}</div><div class="trim-range-overlay" data-duration="${track.duration}"><span class="playback-marker hidden" aria-hidden="true"></span><span class="trim-marker trim-marker-start" data-marker="start" aria-label="Trim start"></span><span class="trim-marker trim-marker-end" data-marker="end" aria-label="Trim end"></span></div></div>`;
+    return `<div class="wave-track" data-track="${trackId}" data-duration="${track.duration}"><label class="wave-name track-select"><input type="checkbox" name="selectedFiles" value="${track.name}" checked />${track.name}</label><button class="track-collapse-button secondary" type="button" aria-expanded="true" title="${t("collapseTrack")}">${t("collapseTrack")}</button><button class="track-preview-button secondary" type="button">${t("previewPlay")}</button><audio class="track-preview-audio" preload="metadata" src="${track.audio}"></audio><div class="track-trim-controls hidden"><label>${t("trackStart")}<input class="track-trim-start" type="number" min="0" max="${displayDuration}" step="0.001" value="0" /></label><label>${t("trackEnd")}<input class="track-trim-end" type="number" min="0" max="${displayDuration}" step="0.001" value="${track.duration.toFixed(3)}" /></label><div class="track-range-controls"><div class="track-range-rail"></div><div class="track-range-fill"></div><input class="track-trim-start-range" type="range" min="0" max="${displayDuration}" step="0.001" value="0" /><input class="track-trim-end-range" type="range" min="0" max="${displayDuration}" step="0.001" value="${track.duration.toFixed(3)}" /></div></div><div class="wave-image-wrap"><img class="wave-image" src="${track.image}" alt="${track.name}" />${channelGuide}<div class="trim-range-overlay" data-duration="${track.duration}"><span class="playback-marker hidden" aria-hidden="true"></span><span class="trim-marker trim-marker-start" data-marker="start" aria-label="Trim start"></span><span class="trim-marker trim-marker-end" data-marker="end" aria-label="Trim end"></span></div></div></div>`;
   }).join("");
   document.querySelectorAll(".wave-track").forEach((row) => {
     const volume = document.createElement("label");
