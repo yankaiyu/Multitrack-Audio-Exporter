@@ -3,7 +3,7 @@ import { changeLanguage, currentLanguage, initializeLanguage, t } from "./i18n.j
 import { refreshStatus, watch } from "./jobs.js";
 import { levelOptionState } from "./level-options.js";
 import { applyPreviewAudioSettings, PREVIEW_VOLUME_MAX, PREVIEW_VOLUME_MIN, resumePreviewAudio } from "./preview-audio.js";
-import { normalizeTrimRange, timeAtPointer } from "./trim-geometry.js";
+import { displayTimeLimit, normalizeTrimRange, timeAtPointer } from "./trim-geometry.js";
 
 const ZIP_PREFERENCE_KEY = "packageZip";
 const SPLIT_STEREO_PREFERENCE_KEY = "splitStereo";
@@ -29,6 +29,7 @@ function resetWaveformState() {
   $("#trim-controls").classList.remove("has-preview-volume");
   $("#individual-trim-option").classList.add("hidden");
   $("#individual-trim").checked = false;
+  $("#unified-trim").checked = true;
   $("#auto-deselect-silent-option").classList.add("hidden");
   $("#auto-deselect-silent").checked = false;
   $("#select-all").classList.add("hidden");
@@ -346,8 +347,9 @@ function renderWaveforms(preview) {
   const waves = $("#waveforms");
   waves.innerHTML = preview.map((track) => {
     const trackId = encodeURIComponent(track.name);
+    const displayDuration = displayTimeLimit(track.duration);
   const channelGuide = track.stereo ? `<div class="stereo-channel-guide" aria-hidden="true"><span class="stereo-channel-label stereo-channel-label-left">L</span><span class="stereo-channel-label stereo-channel-label-right">R</span><span class="stereo-channel-divider"></span></div>` : "";
-    return `<div class="wave-track" data-track="${trackId}" data-duration="${track.duration}"><label class="wave-name track-select"><input type="checkbox" name="selectedFiles" value="${track.name}" checked />${track.name}</label><button class="track-preview-button secondary" type="button">${t("previewPlay")}</button><audio class="track-preview-audio" preload="metadata" src="${track.audio}"></audio><div class="track-trim-controls hidden"><label>${t("trackStart")}<input class="track-trim-start" type="number" min="0" max="${track.duration}" step="0.001" value="0" /></label><label>${t("trackEnd")}<input class="track-trim-end" type="number" min="0" max="${track.duration}" step="0.001" value="${track.duration.toFixed(3)}" /></label><div class="track-range-controls"><div class="track-range-rail"></div><div class="track-range-fill"></div><input class="track-trim-start-range" type="range" min="0" max="${track.duration}" step="0.001" value="0" /><input class="track-trim-end-range" type="range" min="0" max="${track.duration}" step="0.001" value="${track.duration}" /></div></div><div class="wave-image-wrap"><img class="wave-image" src="${track.image}" alt="${track.name}" />${channelGuide}</div><div class="trim-range-overlay" data-duration="${track.duration}"><span class="playback-marker hidden" aria-hidden="true"></span><span class="trim-marker trim-marker-start" data-marker="start" aria-label="Trim start"></span><span class="trim-marker trim-marker-end" data-marker="end" aria-label="Trim end"></span></div></div>`;
+    return `<div class="wave-track" data-track="${trackId}" data-duration="${track.duration}"><label class="wave-name track-select"><input type="checkbox" name="selectedFiles" value="${track.name}" checked />${track.name}</label><button class="track-preview-button secondary" type="button">${t("previewPlay")}</button><audio class="track-preview-audio" preload="metadata" src="${track.audio}"></audio><div class="track-trim-controls hidden"><label>${t("trackStart")}<input class="track-trim-start" type="number" min="0" max="${displayDuration}" step="0.001" value="0" /></label><label>${t("trackEnd")}<input class="track-trim-end" type="number" min="0" max="${displayDuration}" step="0.001" value="${track.duration.toFixed(3)}" /></label><div class="track-range-controls"><div class="track-range-rail"></div><div class="track-range-fill"></div><input class="track-trim-start-range" type="range" min="0" max="${displayDuration}" step="0.001" value="0" /><input class="track-trim-end-range" type="range" min="0" max="${displayDuration}" step="0.001" value="${track.duration.toFixed(3)}" /></div></div><div class="wave-image-wrap"><img class="wave-image" src="${track.image}" alt="${track.name}" />${channelGuide}</div><div class="trim-range-overlay" data-duration="${track.duration}"><span class="playback-marker hidden" aria-hidden="true"></span><span class="trim-marker trim-marker-start" data-marker="start" aria-label="Trim start"></span><span class="trim-marker trim-marker-end" data-marker="end" aria-label="Trim end"></span></div></div>`;
   }).join("");
   document.querySelectorAll(".wave-track").forEach((row) => {
     const volume = document.createElement("label");
@@ -355,8 +357,9 @@ function renderWaveforms(preview) {
     volume.innerHTML = `<span>${t("previewVolume")}</span><input type="range" min="${PREVIEW_VOLUME_MIN}" max="${PREVIEW_VOLUME_MAX}" step="1" value="0" aria-label="${t("previewVolume")}" /><span class="track-preview-volume-number-row"><input class="track-preview-volume-number" type="number" min="${PREVIEW_VOLUME_MIN}" max="${PREVIEW_VOLUME_MAX}" step="1" value="0" aria-label="${t("previewVolume")}" /><span class="track-preview-volume-unit">dB</span></span>`;
     row.querySelector(".wave-image-wrap").append(volume);
   });
-  ["#trim-start-range", "#trim-end-range"].forEach((selector) => { $(selector).max = waveformDuration; });
-  $("#trim-end").max = waveformDuration;
+  const displayWaveformDuration = displayTimeLimit(waveformDuration);
+  ["#trim-start-range", "#trim-end-range"].forEach((selector) => { $(selector).max = displayWaveformDuration; });
+  $("#trim-end").max = displayWaveformDuration;
   $("#trim-controls").classList.remove("hidden");
   $("#trim-controls").classList.add("has-preview-volume");
   $("#preview-volume-heading").classList.remove("hidden");
@@ -368,6 +371,7 @@ function renderWaveforms(preview) {
   $("#individual-trim-option").classList.remove("hidden");
   $("#auto-deselect-silent-option").classList.remove("hidden");
   $("#individual-trim").checked = uneven;
+  $("#unified-trim").checked = !uneven;
   updateIndividualTrimMode();
   $("#waveform-status").textContent = t("waveformsReady");
   syncTrim();
@@ -492,7 +496,7 @@ $("#trim-start").addEventListener("input", () => syncTrim("start"));
 $("#trim-end").addEventListener("input", () => syncTrim("end"));
 $("#trim-start-range").addEventListener("input", (event) => { $("#trim-start").value = event.target.value; syncTrim("start"); });
 $("#trim-end-range").addEventListener("input", (event) => { $("#trim-end").value = event.target.value; syncTrim("end"); });
-$("#individual-trim").addEventListener("change", updateIndividualTrimMode);
+document.querySelectorAll("input[name=trimMode]").forEach((input) => input.addEventListener("change", updateIndividualTrimMode));
 document.querySelectorAll("input[name=mode]").forEach((input) => input.addEventListener("change", updateLevelOptions));
 $("#auto-deselect-silent").addEventListener("change", autoDeselectSilentTracks);
 document.querySelector("select[name=silenceThreshold]").addEventListener("change", autoDeselectSilentTracks);

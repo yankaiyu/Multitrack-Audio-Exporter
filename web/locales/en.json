@@ -64,6 +64,7 @@
   "loadWaveforms": "〰️ Load waveforms",
   "trimStart": "Start (seconds)",
   "trimEnd": "End (seconds)",
+  "unifiedTrim": "🔗 Unified trim",
   "individualTrim": "✂️ Individual trim",
   "autoDeselectSilent": "🔊 Select audible tracks only",
   "autoDeselectSilentHelp": "Uses the threshold below.",

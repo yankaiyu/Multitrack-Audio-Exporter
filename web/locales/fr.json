@@ -32,6 +32,7 @@
     "trimTitle": "Formes d’onde et découpage",
     "trimHelp": "Facultatif : chargez les formes d’onde pour découper, écouter, régler le volume d’aperçu ou choisir des pistes.",
     "loadWaveforms": "〰️ Charger les formes d’onde",
+    "unifiedTrim": "🔗 Découpage unifié",
     "individualTrim": "✂️ Découpage individuel",
     "autoDeselectSilent": "🔊 Sélectionner uniquement les pistes audibles",
     "trackStart": "Début",

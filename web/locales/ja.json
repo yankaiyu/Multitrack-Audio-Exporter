@@ -32,6 +32,7 @@
     "trimTitle": "波形とトリミング",
     "trimHelp": "任意：波形を読み込むとトリミング、試聴、各トラックのプレビュー音量調整、トラック選択ができます。",
     "loadWaveforms": "〰️ 波形を読み込む",
+    "unifiedTrim": "🔗 一括トリミング",
     "individualTrim": "✂️ トラックごとにトリミング",
     "autoDeselectSilent": "🔊 有音トラックのみ選択",
     "trackStart": "開始",

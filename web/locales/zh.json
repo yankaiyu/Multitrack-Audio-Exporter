@@ -64,6 +64,7 @@
   "loadWaveforms": "〰️ 加载波形",
   "trimStart": "开始时间（秒）",
   "trimEnd": "结束时间（秒）",
+  "unifiedTrim": "🔗 统一裁剪",
   "individualTrim": "✂️ 逐轨裁剪",
   "autoDeselectSilent": "🔊 只选择有声轨道",
   "autoDeselectSilentHelp": "按下方阈值判断。",

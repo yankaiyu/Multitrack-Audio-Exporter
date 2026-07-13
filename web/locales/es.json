@@ -32,6 +32,7 @@
     "trimTitle": "Formas de onda y recorte",
     "trimHelp": "Opcional: carga las formas de onda para recortar, escuchar, ajustar el volumen de preescucha o elegir pistas.",
     "loadWaveforms": "〰️ Cargar formas de onda",
+    "unifiedTrim": "🔗 Recorte unificado",
     "individualTrim": "✂️ Recorte individual",
     "autoDeselectSilent": "🔊 Seleccionar solo pistas con audio",
     "trackStart": "Inicio",

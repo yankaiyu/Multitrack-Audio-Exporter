@@ -68,8 +68,9 @@ class LocaleTests(unittest.TestCase):
 
     def test_trim_geometry_module_exposes_pure_helpers(self) -> None:
         geometry = (server.WEB_ROOT / "trim-geometry.js").read_text(encoding="utf-8")
-        for export in ("clampTime", "normalizeTrimRange", "timeAtPointer"):
+        for export in ("clampTime", "displayTimeLimit", "normalizeTrimRange", "timeAtPointer"):
             self.assertIn(f"export function {export}", geometry)
+        self.assertIn("Math.ceil(value * 1000) / 1000", geometry)
 
 @unittest.skipUnless(server.tool_path("ffmpeg") and server.tool_path("ffprobe"), "FFmpeg and FFprobe are required")
 class FloatAudioPipelineTests(unittest.TestCase):

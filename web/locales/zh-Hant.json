@@ -33,6 +33,7 @@
     "trimTitle": "波形與裁剪",
     "trimHelp": "可選：載入波形後可裁剪、試聽、調整每軌試聽音量或選擇軌道。",
     "loadWaveforms": "〰️ 載入波形",
+    "unifiedTrim": "🔗 統一裁剪",
     "individualTrim": "✂️ 逐軌裁剪",
     "autoDeselectSilent": "🔊 只選擇有聲軌道",
     "trackStart": "開始",

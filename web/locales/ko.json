@@ -32,6 +32,7 @@
     "trimTitle": "파형 및 트리밍",
     "trimHelp": "선택 사항: 파형을 불러오면 트리밍, 미리듣기, 트랙별 미리듣기 볼륨 조정, 트랙 선택을 할 수 있습니다.",
     "loadWaveforms": "〰️ 파형 불러오기",
+    "unifiedTrim": "🔗 전체 트리밍",
     "individualTrim": "✂️ 트랙별 트리밍",
     "autoDeselectSilent": "🔊 소리가 있는 트랙만 선택",
     "trackStart": "시작",
