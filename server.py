@@ -271,6 +271,7 @@ def waveform_job(job_id: str, source_text: str, language: str = "zh", split_ster
             else:
                 preview_files.append(file)
         previews = []
+        preview_total = len(preview_files)
         for index, file in enumerate(preview_files):
             probe = subprocess.run([ffprobe, "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=channels",
                                     "-of", "default=nokey=1:noprint_wrappers=1", str(file)], capture_output=True, text=True)
@@ -299,8 +300,8 @@ def waveform_job(job_id: str, source_text: str, language: str = "zh", split_ster
             # optionally deselect tracks below its empty-track threshold.
             previews.append({"name": file.name, "duration": duration, "peak": peak_of_audio(file), "stereo": channels == 2,
                              "image": f"/api/waveform/{token}", "audio": f"/api/audio/{audio_token}"})
-            append_localized_log(job_id, "waveformProgress", current=index + 1, total=len(files), file=file.name)
-            set_localized_progress(job_id, round((index + 1) / len(files) * 100), "generatingWaveforms", current=index + 1, total=len(files))
+            append_localized_log(job_id, "waveformProgress", current=index + 1, total=preview_total, file=file.name)
+            set_localized_progress(job_id, round((index + 1) / preview_total * 100), "generatingWaveforms", current=index + 1, total=preview_total)
         with JOBS_LOCK:
             JOBS[job_id].update(status="done", preview=previews)
     except JobCancelled:
