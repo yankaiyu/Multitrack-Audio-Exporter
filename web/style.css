@@ -78,12 +78,13 @@ legend { padding: 0 10px 0 0; }
 .toggle-option input { flex: 0 0 auto; margin: 0; }
 .toggle-option span { display: inline; margin: 0; }
 .toggle-option small { display: inline; margin: 0 0 0 4px; }
-#package-zip-option, #split-stereo-option, #auto-deselect-silent-option { align-items: center; display: flex; gap: 8px; }
-#package-zip-option input, #split-stereo-option input, #auto-deselect-silent-option input { margin: 0; }
-#package-zip-option span, #split-stereo-option span, #auto-deselect-silent-option span { display: inline; margin: 0; }
+#package-zip-option, #split-stereo-option { align-items: center; display: flex; gap: 8px; }
+#package-zip-option input, #split-stereo-option input { margin: 0; }
+#package-zip-option span, #split-stereo-option span { display: inline; margin: 0; }
 .split-stereo-icon { background: var(--accent); border-radius: 4px; color: #162008; display: inline-block !important; font-size: .72em; font-weight: 800; letter-spacing: -.04em; line-height: 1.45; padding: 1px 4px; }
-#auto-deselect-silent-option { flex-wrap: nowrap; }
-#auto-deselect-silent-option small { display: inline; flex-basis: auto; margin: 0 0 0 4px; }
+.audible-track-action { align-items: center; display: flex; gap: 8px; margin: 0 0 18px; }
+.audible-track-action button { font-size: 13px; padding: 7px 10px; }
+.audible-track-action small { color: var(--muted); }
 #individual-trim-option.hidden, #auto-deselect-silent-option.hidden { display: none; }
 .trim-mode-toggle { background: #101718; border: 1px solid var(--line); border-radius: 8px; display: inline-flex; gap: 0; margin: 4px 0 18px; overflow: hidden; }
 .trim-mode-toggle label { color: var(--muted); cursor: pointer; display: inline-flex; margin: 0; }

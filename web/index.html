@@ -45,7 +45,7 @@
             <label><input id="unified-trim" type="radio" name="trimMode" value="shared" checked /> <span data-i18n="unifiedTrim">Unified trim</span></label>
             <label><input id="individual-trim" type="radio" name="trimMode" value="individual" /> <span data-i18n="individualTrim">✂️ Individual trim</span></label>
           </div>
-          <label id="auto-deselect-silent-option" class="checkbox hidden"><input id="auto-deselect-silent" type="checkbox" /> <span data-i18n="autoDeselectSilent">🔊 Select audible tracks only</span><small data-i18n="autoDeselectSilentHelp">Uses the threshold below.</small></label>
+          <div id="auto-deselect-silent-option" class="audible-track-action hidden"><button id="auto-deselect-silent" class="secondary" type="button" data-i18n="autoDeselectSilent">🔊 Select audible tracks only</button><small data-i18n="autoDeselectSilentHelp">Uses the threshold below.</small></div>
           <label id="preview-limiter-option" class="checkbox"><input id="preview-limiter" type="checkbox" checked /> <span data-i18n="previewLimiter">🛡️ Safe preview limiter</span><small data-i18n="previewLimiterHelp">Only affects playback, not exported files.</small></label>
           <div id="playhead-mode-option" class="trim-mode-toggle hidden" role="group" aria-label="Playhead mode">
             <label><input id="linked-playheads" type="radio" name="playheadMode" value="linked" checked /> <span data-i18n="linkedPlayheads">🔗 Linked playheads</span></label>

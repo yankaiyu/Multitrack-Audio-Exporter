@@ -40,7 +40,6 @@ function resetWaveformState() {
   $("#individual-trim").checked = false;
   $("#unified-trim").checked = true;
   $("#auto-deselect-silent-option").classList.add("hidden");
-  $("#auto-deselect-silent").checked = false;
   $("#select-all").classList.add("hidden");
   $("#select-none").classList.add("hidden");
   $("#trim-start").value = "0";
@@ -517,7 +516,6 @@ function renderWaveforms(preview) {
 }
 
 function autoDeselectSilentTracks() {
-  if (!$("#auto-deselect-silent").checked) return;
   const threshold = Number(document.querySelector("select[name=silenceThreshold]").value);
   waveformTracks.forEach((track) => {
     const row = document.querySelector(`.wave-track[data-track="${encodeURIComponent(track.name)}"]`);
@@ -615,13 +613,11 @@ $("#trim-start-range").addEventListener("input", (event) => { $("#trim-start").v
 $("#trim-end-range").addEventListener("input", (event) => { $("#trim-end").value = event.target.value; syncTrim("end"); });
 document.querySelectorAll("input[name=trimMode]").forEach((input) => input.addEventListener("change", updateIndividualTrimMode));
 document.querySelectorAll("input[name=mode]").forEach((input) => input.addEventListener("change", updateLevelOptions));
-$("#auto-deselect-silent").addEventListener("change", autoDeselectSilentTracks);
-document.querySelector("select[name=silenceThreshold]").addEventListener("change", autoDeselectSilentTracks);
+$("#auto-deselect-silent").addEventListener("click", autoDeselectSilentTracks);
 $("#waveforms").addEventListener("input", (event) => {
   const row = event.target.closest(".wave-track");
   if (event.target.matches("input[name=selectedFiles]")) {
     // A manual track choice replaces the automatic audible-only selection.
-    $("#auto-deselect-silent").checked = false;
     updateTrackSelectionState(row);
     return;
   }
@@ -691,8 +687,8 @@ window.addEventListener("pointerup", endPlaybackDrag);
 window.addEventListener("pointercancel", endPlaybackDrag);
 window.addEventListener("mousemove", dragPlayback, { passive: false });
 window.addEventListener("mouseup", endPlaybackDrag);
-$("#select-all").addEventListener("click", () => { $("#auto-deselect-silent").checked = false; document.querySelectorAll("input[name=selectedFiles]").forEach((item) => { item.checked = true; updateTrackSelectionState(item.closest(".wave-track")); }); });
-$("#select-none").addEventListener("click", () => { $("#auto-deselect-silent").checked = false; document.querySelectorAll("input[name=selectedFiles]").forEach((item) => { item.checked = false; updateTrackSelectionState(item.closest(".wave-track")); }); });
+$("#select-all").addEventListener("click", () => { document.querySelectorAll("input[name=selectedFiles]").forEach((item) => { item.checked = true; updateTrackSelectionState(item.closest(".wave-track")); }); });
+$("#select-none").addEventListener("click", () => { document.querySelectorAll("input[name=selectedFiles]").forEach((item) => { item.checked = false; updateTrackSelectionState(item.closest(".wave-track")); }); });
 $("#all-preview-button").addEventListener("click", () => {
   if ($("#all-preview-button").dataset.playing === "true") stopAllTrackPreviews();
   else startAllTrackPreviews();
