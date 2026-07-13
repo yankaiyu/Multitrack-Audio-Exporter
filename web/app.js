@@ -15,6 +15,8 @@ let waveformDuration = 0;
 let globalMarkerDrag = null;
 let playbackDrag = null;
 let lastPreviewRow = null;
+let allPreviewPlaying = false;
+let syncingSharedPlayback = false;
 function resetWaveformState() {
   document.querySelectorAll(".track-preview-audio").forEach((audio) => audio.pause());
   waveformTracks = [];
@@ -22,8 +24,13 @@ function resetWaveformState() {
   globalMarkerDrag = null;
   playbackDrag = null;
   lastPreviewRow = null;
+  allPreviewPlaying = false;
+  syncingSharedPlayback = false;
   $("#waveforms").innerHTML = "";
-  $("#preview-volume-heading").classList.add("hidden");
+  $("#preview-volume-toolbar").classList.add("hidden");
+  $("#playhead-mode-option").classList.add("hidden");
+  $("#linked-playheads").checked = true;
+  $("#independent-playheads").checked = false;
   $("#waveform-status").textContent = "";
   $("#trim-controls").classList.add("hidden");
   $("#trim-controls").classList.remove("has-preview-volume");
@@ -136,6 +143,26 @@ function seekPlaybackFromPointer(row, clientX) {
   audio.dataset.previewPosition = String(audio.currentTime);
   row.querySelector(".playback-marker")?.classList.remove("hidden");
   updatePlaybackMarker(row);
+  syncSharedPlaybackPosition(row, audio.currentTime);
+}
+
+function syncSharedPlaybackPosition(sourceRow, time) {
+  if (syncingSharedPlayback || !$("#linked-playheads").checked) return;
+  const rows = previewRows();
+  if (!rows.length) return;
+  syncingSharedPlayback = true;
+  rows.forEach((row) => {
+    if (row === sourceRow) return;
+    const audio = row.querySelector(".track-preview-audio");
+    if (!audio) return;
+    const bounds = previewBounds(row);
+    const target = Math.max(bounds.start, Math.min(bounds.end, time));
+    if (Math.abs((audio.currentTime || 0) - target) > 0.01) audio.currentTime = target;
+    audio.dataset.previewPosition = String(target);
+    row.querySelector(".playback-marker")?.classList.remove("hidden");
+    updatePlaybackMarker(row);
+  });
+  syncingSharedPlayback = false;
 }
 
 function beginPlaybackDrag(event) {
@@ -309,6 +336,7 @@ function stopTrackPreview(row, reset = false, resetPosition = null) {
 function startTrackPreview(row) {
   const audio = row.querySelector(".track-preview-audio");
   if (!audio) return;
+  allPreviewPlaying = false;
   document.querySelectorAll(".wave-track").forEach((other) => { if (other !== row) stopTrackPreview(other); });
   const bounds = previewBounds(row);
   const savedPosition = Number(audio.dataset.previewPosition);
@@ -341,6 +369,73 @@ function toggleTrackPreview(row) {
   else stopTrackPreview(row);
 }
 
+function previewRows() {
+  return [...document.querySelectorAll(".wave-track")].filter((row) => {
+    const selected = row.querySelector("input[name=selectedFiles]")?.checked;
+    return selected && !row.classList.contains("is-deselected") && row.querySelector(".track-preview-audio");
+  });
+}
+
+function syncAllPreviewButton() {
+  const button = $("#all-preview-button");
+  if (!button) return;
+  const playing = allPreviewPlaying && previewRows().some((row) => !row.querySelector(".track-preview-audio").paused);
+  button.textContent = t(playing ? "previewPauseAll" : "previewPlayAll");
+  button.dataset.playing = String(playing);
+}
+
+function stopAllTrackPreviews() {
+  allPreviewPlaying = false;
+  document.querySelectorAll(".wave-track").forEach((row) => stopTrackPreview(row));
+  syncAllPreviewButton();
+}
+
+function resetAllPlayheads() {
+  allPreviewPlaying = false;
+  document.querySelectorAll(".wave-track").forEach((row) => {
+    const audio = row.querySelector(".track-preview-audio");
+    if (!audio) return;
+    stopTrackPreview(row);
+    const bounds = previewBounds(row);
+    audio.currentTime = bounds.start;
+    audio.dataset.previewPosition = String(bounds.start);
+    row.querySelector(".playback-marker")?.classList.remove("hidden");
+    updatePlaybackMarker(row);
+  });
+  syncAllPreviewButton();
+}
+
+function startAllTrackPreviews() {
+  const rows = previewRows();
+  if (!rows.length) return;
+  const shared = $("#linked-playheads").checked;
+  const reference = lastPreviewRow?.querySelector(".track-preview-audio");
+  const referenceBounds = lastPreviewRow ? previewBounds(lastPreviewRow) : null;
+  const referencePosition = reference && referenceBounds && Number.isFinite(reference.currentTime)
+    && reference.currentTime >= referenceBounds.start && reference.currentTime < referenceBounds.end
+    ? reference.currentTime : null;
+  const sharedPosition = referencePosition ?? previewBounds(rows[0]).start;
+  allPreviewPlaying = true;
+  rows.forEach((row) => {
+    const audio = row.querySelector(".track-preview-audio");
+    const bounds = previewBounds(row);
+    const savedPosition = Number(audio.dataset.previewPosition);
+    const position = shared
+      ? Math.max(bounds.start, Math.min(bounds.end, sharedPosition))
+      : (Number.isFinite(savedPosition) && savedPosition >= bounds.start && savedPosition < bounds.end
+        ? savedPosition : bounds.start);
+    applyPreviewAudioSettings(row, $("#preview-limiter"));
+    resumePreviewAudio();
+    audio.currentTime = position;
+    audio.play().then(() => {
+      setPreviewButton(row, true);
+      row.querySelector(".playback-marker")?.classList.remove("hidden");
+      updatePlaybackMarker(row);
+      syncAllPreviewButton();
+    }).catch(() => { setPreviewButton(row, false); syncAllPreviewButton(); });
+  });
+}
+
 function renderWaveforms(preview) {
   waveformTracks = preview;
   waveformDuration = Math.min(...preview.map((track) => track.duration));
@@ -354,7 +449,8 @@ function renderWaveforms(preview) {
   document.querySelectorAll(".wave-track").forEach((row) => {
     const volume = document.createElement("label");
     volume.className = "track-preview-volume";
-    volume.innerHTML = `<span>${t("previewVolume")}</span><input type="range" min="${PREVIEW_VOLUME_MIN}" max="${PREVIEW_VOLUME_MAX}" step="1" value="0" aria-label="${t("previewVolume")}" /><span class="track-preview-volume-number-row"><input class="track-preview-volume-number" type="number" min="${PREVIEW_VOLUME_MIN}" max="${PREVIEW_VOLUME_MAX}" step="1" value="0" aria-label="${t("previewVolume")}" /><span class="track-preview-volume-unit">dB</span></span>`;
+    volume.title = t("previewVolume");
+    volume.innerHTML = `<span class="track-preview-volume-icon" aria-hidden="true">🔊</span><input type="range" min="${PREVIEW_VOLUME_MIN}" max="${PREVIEW_VOLUME_MAX}" step="1" value="0" title="${t("previewVolume")}" aria-label="${t("previewVolume")}" /><span class="track-preview-volume-number-row"><input class="track-preview-volume-number" type="number" min="${PREVIEW_VOLUME_MIN}" max="${PREVIEW_VOLUME_MAX}" step="1" value="0" aria-label="${t("previewVolume")}" /><span class="track-preview-volume-unit">dB</span></span>`;
     row.querySelector(".wave-image-wrap").append(volume);
   });
   const displayWaveformDuration = displayTimeLimit(waveformDuration);
@@ -362,7 +458,8 @@ function renderWaveforms(preview) {
   $("#trim-end").max = displayWaveformDuration;
   $("#trim-controls").classList.remove("hidden");
   $("#trim-controls").classList.add("has-preview-volume");
-  $("#preview-volume-heading").classList.remove("hidden");
+  $("#preview-volume-toolbar").classList.remove("hidden");
+  $("#playhead-mode-option").classList.remove("hidden");
   updateLevelOptions();
   $("#select-all").classList.remove("hidden");
   $("#select-none").classList.remove("hidden");
@@ -390,15 +487,30 @@ function renderWaveforms(preview) {
     applyPreviewAudioSettings(row, $("#preview-limiter"));
     audio.addEventListener("timeupdate", () => {
       audio.dataset.previewPosition = String(audio.currentTime);
+      if ($("#linked-playheads").checked) syncSharedPlaybackPosition(row, audio.currentTime);
       const bounds = previewBounds(row);
       if (audio.currentTime < bounds.start || audio.currentTime >= bounds.end) {
         const boundary = audio.currentTime < bounds.start ? bounds.start : bounds.end;
-        stopTrackPreview(row, true, boundary);
+        if (allPreviewPlaying && $("#linked-playheads").checked) {
+          // In linked mode a shorter track defines the end of the group.
+          // Stop every track together instead of leaving longer tracks playing
+          // while one audio element sits exactly at its invalid end position.
+          stopAllTrackPreviews();
+        } else {
+          stopTrackPreview(row, true, boundary);
+        }
       } else updatePlaybackMarker(row);
     });
-    audio.addEventListener("ended", () => setPreviewButton(row, false));
-    audio.addEventListener("error", () => setPreviewButton(row, false));
+    audio.addEventListener("ended", () => {
+      setPreviewButton(row, false);
+      if (!previewRows().some((item) => !item.querySelector(".track-preview-audio").paused)) allPreviewPlaying = false;
+      syncAllPreviewButton();
+    });
+    audio.addEventListener("error", () => { setPreviewButton(row, false); syncAllPreviewButton(); });
+    audio.addEventListener("play", syncAllPreviewButton);
+    audio.addEventListener("pause", syncAllPreviewButton);
   });
+  syncAllPreviewButton();
 }
 
 function autoDeselectSilentTracks() {
@@ -567,6 +679,17 @@ window.addEventListener("mousemove", dragPlayback, { passive: false });
 window.addEventListener("mouseup", endPlaybackDrag);
 $("#select-all").addEventListener("click", () => { $("#auto-deselect-silent").checked = false; document.querySelectorAll("input[name=selectedFiles]").forEach((item) => { item.checked = true; updateTrackSelectionState(item.closest(".wave-track")); }); });
 $("#select-none").addEventListener("click", () => { $("#auto-deselect-silent").checked = false; document.querySelectorAll("input[name=selectedFiles]").forEach((item) => { item.checked = false; updateTrackSelectionState(item.closest(".wave-track")); }); });
+$("#all-preview-button").addEventListener("click", () => {
+  if ($("#all-preview-button").dataset.playing === "true") stopAllTrackPreviews();
+  else startAllTrackPreviews();
+});
+$("#reset-playheads-button").addEventListener("click", resetAllPlayheads);
+document.querySelectorAll("input[name=playheadMode]").forEach((input) => input.addEventListener("change", () => {
+  if ($("#linked-playheads").checked && lastPreviewRow) {
+    const audio = lastPreviewRow.querySelector(".track-preview-audio");
+    if (audio) syncSharedPlaybackPosition(lastPreviewRow, audio.currentTime);
+  }
+}));
 window.addEventListener("resize", () => {
   if ($("#individual-trim").checked) document.querySelectorAll(".wave-track").forEach((row) => syncIndividualTrim(row));
   else syncTrim();
@@ -593,6 +716,7 @@ $("#language-select").addEventListener("change", async (event) => {
 });
 document.addEventListener("languagechange", () => {
   updateOutputFormat();
+  syncAllPreviewButton();
   refreshStatus().catch((error) => { $("#dependency-status").textContent = `${t("unable")}${error.message}`; });
 });
 

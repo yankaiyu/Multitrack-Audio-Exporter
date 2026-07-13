@@ -47,8 +47,12 @@
           </div>
           <label id="auto-deselect-silent-option" class="checkbox hidden"><input id="auto-deselect-silent" type="checkbox" /> <span data-i18n="autoDeselectSilent">🔊 Select audible tracks only</span><small data-i18n="autoDeselectSilentHelp">Uses the threshold below.</small></label>
           <label id="preview-limiter-option" class="checkbox"><input id="preview-limiter" type="checkbox" checked /> <span data-i18n="previewLimiter">🛡️ Safe preview limiter</span><small data-i18n="previewLimiterHelp">Only affects playback, not exported files.</small></label>
+          <div id="playhead-mode-option" class="trim-mode-toggle hidden" role="group" aria-label="Playhead mode">
+            <label><input id="linked-playheads" type="radio" name="playheadMode" value="linked" checked /> <span data-i18n="linkedPlayheads">🔗 Linked playheads</span></label>
+            <label><input id="independent-playheads" type="radio" name="playheadMode" value="independent" /> <span data-i18n="independentPlayheads">↔ Independent playheads</span></label>
+          </div>
           <div id="waveform-status" class="trim-status"></div>
-          <div id="preview-volume-heading" class="preview-volume-heading hidden" data-i18n="previewVolume">Preview volume</div>
+          <div id="preview-volume-toolbar" class="preview-volume-toolbar hidden"><div class="preview-group-actions"><button id="reset-playheads-button" class="secondary" type="button" data-i18n="resetPlayheads">↺ Reset playheads</button><button id="all-preview-button" class="secondary" type="button" data-i18n="previewPlayAll">▶ Play all</button></div></div>
           <div id="waveforms" class="waveforms"></div>
         </section>
 

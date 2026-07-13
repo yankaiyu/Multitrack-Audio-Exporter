@@ -72,6 +72,11 @@ class LocaleTests(unittest.TestCase):
             self.assertIn(f"export function {export}", geometry)
         self.assertIn("Math.ceil(value * 1000) / 1000", geometry)
 
+    def test_linked_preview_stops_group_at_shortest_track_end(self) -> None:
+        app = (server.WEB_ROOT / "app.js").read_text(encoding="utf-8")
+        self.assertIn('if (allPreviewPlaying && $("#linked-playheads").checked)', app)
+        self.assertIn("stopAllTrackPreviews();", app)
+
 @unittest.skipUnless(server.tool_path("ffmpeg") and server.tool_path("ffprobe"), "FFmpeg and FFprobe are required")
 class FloatAudioPipelineTests(unittest.TestCase):
     def setUp(self) -> None:
