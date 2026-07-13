@@ -93,8 +93,13 @@ function syncSharedOverlay(row, start, end) {
   if (!duration || !waveformBounds.width || !containerBounds.width) return;
   overlay.style.top = `${waveformBounds.top - containerBounds.top}px`;
   overlay.style.bottom = `${containerBounds.bottom - waveformBounds.bottom}px`;
-  overlay.style.left = `${start / duration * waveformBounds.width}px`;
-  overlay.style.right = `${Math.max(0, waveformBounds.width - end / duration * waveformBounds.width)}px`;
+  // The overlay is positioned against the whole wrapper, which also contains
+  // the preview-volume rail. Include both wrapper-to-image offsets so 0% and
+  // 100% stay exactly on the image edges rather than drifting into the rail.
+  const imageLeft = waveformBounds.left - containerBounds.left;
+  const imageRight = containerBounds.right - waveformBounds.right;
+  overlay.style.left = `${imageLeft + start / duration * waveformBounds.width}px`;
+  overlay.style.right = `${imageRight + Math.max(0, waveformBounds.width - end / duration * waveformBounds.width)}px`;
 }
 
 function setSharedTrimFromMarker(row, marker, clientX) {
@@ -235,11 +240,13 @@ function syncIndividualOverlay(row, start, end, fill = row.querySelector(".track
   }
   // The waveform image is the source of truth: its borders must always mark
   // 0% and 100% so the visual trim range accurately covers the audio preview.
-  const left = start / duration * waveformBounds.width;
+  const imageLeft = waveformBounds.left - containerBounds.left;
+  const imageRight = containerBounds.right - waveformBounds.right;
+  const left = imageLeft + start / duration * waveformBounds.width;
   const endPosition = end / duration * waveformBounds.width;
   const fillStart = waveformBounds.left - trackBounds.left + start / duration * waveformBounds.width;
   const fillEnd = waveformBounds.left - trackBounds.left + end / duration * waveformBounds.width;
-  const right = waveformBounds.width - endPosition;
+  const right = imageRight + waveformBounds.width - endPosition;
   fill.style.left = `${fillStart}px`;
   fill.style.width = `${Math.max(0, fillEnd - fillStart)}px`;
   overlay.style.left = `${left}px`;

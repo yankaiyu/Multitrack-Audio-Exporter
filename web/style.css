@@ -156,7 +156,7 @@ legend { padding: 0 10px 0 0; }
 .stereo-channel-label { background: color-mix(in srgb, #0d1213 72%, transparent); border-radius: 3px; color: var(--accent); font: 700 10px/1 ui-monospace, SFMono-Regular, monospace; left: 4px; padding: 2px 3px; position: absolute; z-index: 1; }
 .stereo-channel-label-left { top: 4px; }
 .stereo-channel-label-right { bottom: 4px; }
-.trim-range-overlay { background: color-mix(in srgb, var(--accent) 11%, transparent); border-left: 2px solid var(--accent); border-right: 2px solid var(--accent); bottom: 0; box-shadow: 0 0 0 9999px rgb(4 8 9 / 48%); pointer-events: none; position: absolute; top: 22px; }
+.trim-range-overlay { background: color-mix(in srgb, var(--accent) 11%, transparent); border-left: 2px solid var(--accent); border-right: 2px solid var(--accent); bottom: 0; box-shadow: 0 0 0 9999px rgb(4 8 9 / 48%); box-sizing: border-box; pointer-events: none; position: absolute; top: 22px; }
 .individual-trim-active .trim-range-overlay { top: 112px; }
 .trim-marker { bottom: 0; cursor: ew-resize; pointer-events: auto; position: absolute; top: 0; touch-action: none; width: 24px; z-index: 2; }
 .trim-marker-start { left: -12px; }

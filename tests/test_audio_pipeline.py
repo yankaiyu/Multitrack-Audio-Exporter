@@ -83,6 +83,14 @@ class LocaleTests(unittest.TestCase):
         self.assertIn("mediaDuration - 0.001", app)
         self.assertIn("updatePlaybackMarkerAt(row, target)", app)
 
+    def test_trim_overlay_accounts_for_preview_volume_rail_width(self) -> None:
+        app = (server.WEB_ROOT / "app.js").read_text(encoding="utf-8")
+        css = (server.WEB_ROOT / "style.css").read_text(encoding="utf-8")
+        self.assertIn("const imageLeft = waveformBounds.left - containerBounds.left", app)
+        self.assertIn("const imageRight = containerBounds.right - waveformBounds.right", app)
+        self.assertIn("imageRight + Math.max(0, waveformBounds.width - end / duration * waveformBounds.width)", app)
+        self.assertIn("box-sizing: border-box", css)
+
 @unittest.skipUnless(server.tool_path("ffmpeg") and server.tool_path("ffprobe"), "FFmpeg and FFprobe are required")
 class FloatAudioPipelineTests(unittest.TestCase):
     def setUp(self) -> None:
