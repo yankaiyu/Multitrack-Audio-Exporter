@@ -7,6 +7,7 @@ let activeJob;
 export async function refreshStatus() {
   const status = await api("/api/status");
   const ready = status.ffmpeg;
+  document.querySelector(".dependencies").classList.toggle("hidden", Boolean(status.bundled && ready));
   $("#dependency-status").textContent = ready ? t("ready") : t("missingFfmpeg");
   $("#convert-button").disabled = !ready;
 }

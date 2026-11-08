@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import sys
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -25,6 +26,9 @@ AUDIO_CONTENT_TYPES = {
 
 def tool_path(name: str) -> str | None:
     """Find tools installed by Homebrew, pipx, or normally available on PATH."""
+    if getattr(sys, "frozen", False):
+        bundled = Path(sys._MEIPASS) / "bin" / name
+        return str(bundled) if bundled.is_file() and os.access(bundled, os.X_OK) else None
     candidates = [shutil.which(name), *(str(folder / name) for folder in MAC_BIN_DIRS)]
     for item in candidates:
         if item and Path(item).is_file() and os.access(item, os.X_OK):

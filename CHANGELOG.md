@@ -4,6 +4,8 @@
 
 ### Added
 
+- Added a separate self-contained Apple Silicon macOS 26+ app/ZIP build with bundled Python, FFmpeg and FFprobe; retained the source distribution and its dependency setup.
+
 - Support for WAV, AIFF, FLAC, MP3, M4A, and AAC input.
 - MP3, M4A (AAC), and selectable 32-bit float, 24-bit PCM, or 16-bit PCM WAV output.
 - Waveform preview, direct waveform-marker dragging for shared and individual trim, single-track trim audition, track selection, and audible-track selection.
@@ -33,6 +35,8 @@
 ## 未发布
 
 ### 新增
+
+- 增加内置 Python、FFmpeg 和 FFprobe 的 Apple Silicon macOS 26+ 应用/ZIP 构建；继续保留源码版及依赖配置流程。
 
 - 支持 WAV、AIFF、FLAC、MP3、M4A、AAC 输入。
 - 支持 MP3、M4A（AAC）输出，以及可选 32-bit float、24-bit PCM、16-bit PCM WAV 输出。

@@ -656,7 +656,7 @@ class Handler(SimpleHTTPRequestHandler):
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         if parsed.path == "/api/status":
-            self.json_response({"ffmpeg": bool(tool_path("ffmpeg"))})
+            self.json_response({"ffmpeg": bool(tool_path("ffmpeg")), "bundled": bool(getattr(sys, "frozen", False))})
         elif parsed.path == "/api/locales":
             self.json_response({"locales": available_locales()})
         elif parsed.path.startswith("/api/job/"):
@@ -713,6 +713,9 @@ class Handler(SimpleHTTPRequestHandler):
                                                              data.get("splitStereo") in {True, "on", "true", "1"}), daemon=True).start()
                 self.json_response({"job": job_id})
             elif self.path == "/api/dependencies":
+                if getattr(sys, "frozen", False):
+                    self.send_error(HTTPStatus.FORBIDDEN)
+                    return
                 action = data.get("action")
                 if action not in {"install", "uninstall"}:
                     raise ValueError(localized(data.get("language"), "invalidDependencyAction"))

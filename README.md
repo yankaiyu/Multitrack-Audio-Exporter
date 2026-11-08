@@ -27,6 +27,18 @@ To add a UI language, add a complete `web/locales/<code>.json` file; the app dis
 
 ## Quick start
 
+Two distributions are maintained: the source version below and a self-contained app.
+
+### Packaged app (Apple Silicon)
+
+Download the `.app.zip` asset from [GitHub Releases](https://github.com/yankaiyu/Multitrack-Audio-Exporter/releases), extract it, move the app to Applications and open it. Python, FFmpeg and FFprobe are included; no Homebrew or compilation is needed. This initial build targets **Apple Silicon (M1 or later), macOS 26+**; Intel Macs are not supported by this binary.
+
+This app is not Developer ID signed or notarized. After trying to open it, use **System Settings → Privacy & Security → Open Anyway** if macOS blocks it. Only allow a download you trust. Managed Macs may prohibit this. The menu-bar **♫** menu opens the browser interface or quits the app and its background tasks. Closing the browser does not quit the app.
+
+### Source version
+
+The source workflow remains available, including dependency installation/removal. It uses your local Python and FFmpeg rather than bundled binaries. macOS may also ask permission to open a downloaded script.
+
 1. Double-click `start.command`.
 2. Open <http://127.0.0.1:8765> if your browser does not open automatically.
 3. Click <strong>Install / Repair</strong> on first use to install FFmpeg through Homebrew.
@@ -35,6 +47,8 @@ To add a UI language, add a complete `web/locales/<code>.json` file; the app dis
 Files are written to `normalized_audio` inside the source folder.
 
 ## Requirements
+
+These requirements apply to the source version only. Maintainers can build the app using [the packaging guide](packaging/README.md).
 
 - macOS with Python 3.
 - FFmpeg. The app can install it through Homebrew.
@@ -74,6 +88,18 @@ See [CHANGELOG.md](CHANGELOG.md) for detailed behavior and release notes.
 
 ## 快速开始
 
+保留两种分发方式：下方的源码版，以及自包含应用版。
+
+### 打包应用版（Apple Silicon）
+
+在 [GitHub Releases](https://github.com/yankaiyu/Multitrack-Audio-Exporter/releases) 下载 `.app.zip` 附件，解压后将应用拖入 Applications 并打开。内置 Python、FFmpeg 和 FFprobe，无需 Homebrew 或编译。首版支持 **Apple Silicon（M1 及更新芯片）、macOS 26+**；此安装包不支持 Intel Mac。
+
+暂未进行 Developer ID 签名或 Apple 公证。尝试打开后若被拦截，可在 **系统设置 → 隐私与安全性 → 仍要打开** 中放行，请只放行可信来源。受管理的 Mac 可能禁止此操作。菜单栏 **♫** 可重新打开网页或退出应用及后台任务；关闭网页不会退出应用。
+
+### 源码版
+
+继续保留原有源码启动与依赖安装/卸载流程，使用本机 Python 和 FFmpeg。macOS 对下载的脚本也可能提示打开权限。
+
 1. 双击 `start.command`。
 2. 若浏览器未自动打开，访问 <http://127.0.0.1:8765>。
 3. 首次使用时点击 <strong>安装 / 修复依赖</strong>，通过 Homebrew 安装 FFmpeg。
@@ -82,6 +108,8 @@ See [CHANGELOG.md](CHANGELOG.md) for detailed behavior and release notes.
 输出文件会写入源文件夹内的 `normalized_audio`。
 
 ## 环境要求
+
+仅适用于源码版。维护者可按[打包说明](packaging/README.md)构建应用。
 
 - 安装 Python 3 的 macOS。
 - FFmpeg；可由本工具通过 Homebrew 安装。
