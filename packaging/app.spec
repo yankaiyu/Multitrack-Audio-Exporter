@@ -10,5 +10,5 @@ exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name='Multitrack Audio Expo
 coll = COLLECT(exe, a.binaries, a.datas, name='Multitrack Audio Exporter')
 app = BUNDLE(coll, name='Multitrack Audio Exporter.app',
     bundle_identifier='com.multitrackaudio.exporter',
-    info_plist={'LSUIElement': True, 'LSMinimumSystemVersion': '26.0',
-                'CFBundleShortVersionString': '0.1.0', 'CFBundleVersion': '1'})
+    info_plist={'LSUIElement': False, 'LSMinimumSystemVersion': '26.0',
+                'CFBundleShortVersionString': '0.1.0', 'CFBundleVersion': '2'})

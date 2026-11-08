@@ -5,7 +5,7 @@ import shutil
 import sys
 
 out = Path('build/notices')
-for name in ('rumps', 'pyobjc-core', 'pyobjc-framework-Cocoa', 'pyinstaller'):
+for name in ('pyobjc-core', 'pyobjc-framework-Cocoa', 'pyinstaller'):
     package = distribution(name)
     for file in package.files or []:
         if 'license' in str(file).lower() and Path(str(file)).suffix not in ('.py', '.pyc'):

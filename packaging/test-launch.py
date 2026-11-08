@@ -1,10 +1,11 @@
-"""Launch the real menu app and verify HTTP resources and process shutdown."""
+"""Launch the native app and verify resources, Finder reopen and native Quit."""
 import json
 import os
 from pathlib import Path
 import subprocess
 import time
 import urllib.request
+from AppKit import NSRunningApplication, NSApplicationActivationPolicyRegular
 
 url_file = Path.home() / 'Library/Application Support/Multitrack Audio Exporter/desktop.url'
 if url_file.exists():
@@ -28,8 +29,28 @@ try:
     assert status == {'ffmpeg': True, 'bundled': True}, status
     assert b'convert-form' in urllib.request.urlopen(url, timeout=5).read()
     assert b'previewVolume' in urllib.request.urlopen(url + '/locales/en.json', timeout=5).read()
+    log_file = url_file.with_name('desktop.log')
+    for _ in range(100):
+        if 'Native application ready' in log_file.read_text():
+            break
+        time.sleep(.1)
+    else:
+        raise AssertionError('Native application did not finish launching')
+    running_app = NSRunningApplication.runningApplicationWithProcessIdentifier_(process.pid)
+    assert running_app.activationPolicy() == NSApplicationActivationPolicyRegular, 'App must appear in Dock'
+    subprocess.run(['open', '-a', str(binary.parents[2])], check=True)
+    for _ in range(100):
+        if 'Opening browser interface' in log_file.read_text():
+            break
+        time.sleep(.1)
+    else:
+        raise AssertionError('Finder reopen did not reach the running app')
+    subprocess.run(['osascript', '-e',
+                    'tell application id "com.multitrackaudio.exporter" to quit'], check=True)
+    process.wait(timeout=10)
 finally:
-    process.terminate()
+    if process.poll() is None:
+        process.terminate()
     try:
         process.wait(timeout=10)
     except subprocess.TimeoutExpired:
@@ -38,4 +59,10 @@ finally:
         raise
 assert not url_file.exists(), 'App did not clean up its state'
 assert process.returncode == 0, process.returncode
-print('Native app startup, bundled status, web resources and shutdown passed.')
+try:
+    urllib.request.urlopen(url + '/api/status', timeout=1)
+except OSError:
+    pass
+else:
+    raise AssertionError('Server still responds after native Quit')
+print('Native startup, Dock policy, bundled resources, Finder reopen and clean native Quit passed.')

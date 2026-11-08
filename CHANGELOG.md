@@ -4,6 +4,7 @@
 
 ### Added
 
+- The packaged app now appears in the Dock, handles reopening the browser, and cleans up its server on native Quit / ⌘Q.
 - Added a separate self-contained Apple Silicon macOS 26+ app/ZIP build with bundled Python, FFmpeg and FFprobe; retained the source distribution and its dependency setup.
 
 - Support for WAV, AIFF, FLAC, MP3, M4A, and AAC input.
@@ -36,6 +37,7 @@
 
 ### 新增
 
+- 打包应用显示 Dock 图标，支持再次打开网页，并在原生退出 / ⌘Q 时清理后台服务器。
 - 增加内置 Python、FFmpeg 和 FFprobe 的 Apple Silicon macOS 26+ 应用/ZIP 构建；继续保留源码版及依赖配置流程。
 
 - 支持 WAV、AIFF、FLAC、MP3、M4A、AAC 输入。

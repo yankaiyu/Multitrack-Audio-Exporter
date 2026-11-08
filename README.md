@@ -33,7 +33,7 @@ Two distributions are maintained: the source version below and a self-contained 
 
 Download the `.app.zip` asset from [GitHub Releases](https://github.com/yankaiyu/Multitrack-Audio-Exporter/releases), extract it, move the app to Applications and open it. Python, FFmpeg and FFprobe are included; no Homebrew or compilation is needed. This initial build targets **Apple Silicon (M1 or later), macOS 26+**; Intel Macs are not supported by this binary.
 
-This app is not Developer ID signed or notarized. After trying to open it, use **System Settings → Privacy & Security → Open Anyway** if macOS blocks it. Only allow a download you trust. Managed Macs may prohibit this. The menu-bar **♫** menu opens the browser interface or quits the app and its background tasks. Closing the browser does not quit the app.
+This app is not Developer ID signed or notarized. After trying to open it, use **System Settings → Privacy & Security → Open Anyway** if macOS blocks it. Only allow a download you trust. Managed Macs may prohibit this. Click the Dock icon or double-click the app again to reopen the browser. To stop the server and background tasks, select the app in the Dock and press **⌘Q**, or use **♫ → Quit** in the menu bar. Closing the browser does not quit the app.
 
 ### Source version
 
@@ -94,7 +94,7 @@ See [CHANGELOG.md](CHANGELOG.md) for detailed behavior and release notes.
 
 在 [GitHub Releases](https://github.com/yankaiyu/Multitrack-Audio-Exporter/releases) 下载 `.app.zip` 附件，解压后将应用拖入 Applications 并打开。内置 Python、FFmpeg 和 FFprobe，无需 Homebrew 或编译。首版支持 **Apple Silicon（M1 及更新芯片）、macOS 26+**；此安装包不支持 Intel Mac。
 
-暂未进行 Developer ID 签名或 Apple 公证。尝试打开后若被拦截，可在 **系统设置 → 隐私与安全性 → 仍要打开** 中放行，请只放行可信来源。受管理的 Mac 可能禁止此操作。菜单栏 **♫** 可重新打开网页或退出应用及后台任务；关闭网页不会退出应用。
+暂未进行 Developer ID 签名或 Apple 公证。尝试打开后若被拦截，可在 **系统设置 → 隐私与安全性 → 仍要打开** 中放行，请只放行可信来源。受管理的 Mac 可能禁止此操作。点击 Dock 图标或再次双击应用可重新打开网页。退出时，在 Dock 中选中本应用并按 **⌘Q**，或使用菜单栏 **♫ → 退出**，即可停止服务器及后台任务。关闭网页不会退出应用。
 
 ### 源码版
 
