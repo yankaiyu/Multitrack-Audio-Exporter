@@ -44,4 +44,5 @@ export PYINSTALLER_CONFIG_DIR="$ROOT/build/pyinstaller-cache"
 env PATH=/usr/bin:/bin 'dist/Multitrack Audio Exporter.app/Contents/MacOS/Multitrack Audio Exporter' --smoke-test
 ditto -c -k --sequesterRsrc --keepParent 'dist/Multitrack Audio Exporter.app' \
   'dist/Multitrack-Audio-Exporter-0.1.0-macOS26-arm64.zip'
-shasum -a 256 dist/*.zip > dist/SHA256SUMS.txt
+# Keep filenames relative to the download folder, not the source checkout.
+(cd dist && shasum -a 256 -- *.zip > SHA256SUMS.txt)
