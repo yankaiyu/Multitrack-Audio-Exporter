@@ -44,14 +44,14 @@ def parallel_map(items: list, workers: int, action) -> list:
         return list(pool.map(action, items))
 
 
-def peak_of_audio(path: Path) -> float | None:
+def peak_of_audio(path: Path, pre_filter: str | None = None) -> float | None:
     """Return decoded sample peak in dBFS, including float values above 0 dBFS."""
     ffmpeg = tool_path("ffmpeg")
     if not ffmpeg:
         return None
     # volumedetect clamps at 0 dBFS, while float WAV samples can legitimately exceed it.
     result = subprocess.run(
-        [ffmpeg, "-hide_banner", "-i", str(path), "-af", "astats=metadata=0:reset=0", "-f", "null", "-"],
+        [ffmpeg, "-hide_banner", "-i", str(path), "-af", (pre_filter + "," if pre_filter else "") + "astats=metadata=0:reset=0", "-f", "null", "-"],
         capture_output=True, text=True,
     )
     levels = []

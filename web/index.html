@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title data-i18n="pageTitle">Multitrack Audio Exporter</title>
     <link rel="stylesheet" href="style.css" />
+    <link rel="icon" type="image/png" sizes="128x128" href="app-icon.png" />
   </head>
   <body>
     <main>
@@ -35,6 +36,7 @@
 
         <label id="split-stereo-option" class="checkbox"><input id="split-stereo" type="checkbox" name="splitStereo" /> <span class="split-stereo-icon" aria-hidden="true">L/R</span> <span data-i18n="splitStereo">Split stereo tracks into independent mono tracks</span></label>
         <section class="trim-section">
+          <label class="checkbox toggle-option"><input id="auto-audible-on-load" type="checkbox" /> <span data-i18n="autoAudibleOnLoad">🔊 Auto-select audible tracks when waveforms load</span><small data-i18n="autoAudibleHelp">Uses the threshold below; overrides reused selections on load. You can still change selections manually.</small></label>
           <div class="section-heading"><div><h2 data-i18n="trimTitle">Waveforms & trim</h2><p data-i18n="trimHelp">Optional. Load waveforms to trim, audition, adjust preview volume, or choose tracks.</p></div><div class="preview-actions"><button id="select-all" type="button" class="text-button hidden" data-i18n="selectAll">✓ Select all</button><button id="select-none" type="button" class="text-button hidden" data-i18n="selectNone">✕ Select none</button><button id="load-waveforms" type="button" class="primary waveform-load-button" data-i18n="loadWaveforms">〰️ Load waveforms</button></div></div>
           <div id="trim-controls" class="trim-controls hidden">
             <label><span data-i18n="trimStart">Start (seconds)</span><input id="trim-start" name="trimStart" type="number" min="0" step="0.001" value="0" /></label>
@@ -46,6 +48,8 @@
             <label><input id="individual-trim" type="radio" name="trimMode" value="individual" /> <span data-i18n="individualTrim">✂️ Individual trim</span></label>
           </div>
           <div id="auto-deselect-silent-option" class="audible-track-action hidden"><button id="auto-deselect-silent" class="secondary" type="button" data-i18n="autoDeselectSilent">🔊 Select audible tracks only</button><small data-i18n="autoDeselectSilentHelp">Uses the threshold below.</small></div>
+          <small id="selection-status" role="status"></small>
+          <div id="peak-tools" class="hidden"><button id="detect-peaks" class="secondary" type="button" data-i18n="peakDetect">🔎 Detect unusual peaks</button><small data-i18n="peakDetectHelp">Selected tracks and trim ranges only; review before applying.</small><p id="peak-status" role="status"></p></div>
           <label id="preview-limiter-option" class="checkbox"><input id="preview-limiter" type="checkbox" checked /> <span data-i18n="previewLimiter">🛡️ Safe preview limiter</span><small data-i18n="previewLimiterHelp">Only affects playback, not exported files.</small></label>
           <div id="playhead-mode-option" class="trim-mode-toggle hidden" role="group" aria-label="Playhead mode">
             <label><input id="linked-playheads" type="radio" name="playheadMode" value="linked" checked /> <span data-i18n="linkedPlayheads">🔗 Linked playheads</span></label>

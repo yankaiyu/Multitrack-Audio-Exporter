@@ -4,6 +4,11 @@
 
 ### Added
 
+- Remembered, opt-in audible-track selection on waveform load. It takes precedence over reused selections, uses the existing empty-track threshold, and still allows manual overrides. Enabling it on loaded tracks applies immediately; later threshold changes do not silently replace manual selections.
+- Added a custom multitrack-waveform/export icon for the macOS app and browser tab, with reproducible native icon-size generation during packaging.
+- Optional conservative peak detection within selected trim ranges, review markers, original/edited audition, adjustable local gain/ranges and undo. Confirmed edits use the same smooth float envelope in preview and export, before normalization, independently of preview-volume export settings.
+- Reuse the previous track-selection mask by list position for matching track counts (including exports without reloading waveforms); count mismatches default to all selected and stereo-split changes reset the mask. Trims, gains and edits are not transferred.
+- Ignore stale waveform responses after folder changes. Added synthetic peak/edit/export regressions and UI coverage.
 - The packaged app now appears in the Dock, handles reopening the browser, and cleans up its server on native Quit / ⌘Q.
 - Added a separate self-contained Apple Silicon macOS 26+ app/ZIP build with bundled Python, FFmpeg and FFprobe; retained the source distribution and its dependency setup.
 
@@ -37,6 +42,11 @@
 
 ### 新增
 
+- 增加可记忆的“加载波形后自动只选有声轨道”开关，初次默认关闭。开启时优先于上一组勾选，使用现有底噪阈值，并允许手动改选。已有波形时开启会立即筛选；之后调整阈值不会静默覆盖手动勾选。
+- 增加多轨波形与导出箭头应用图标，用于 macOS 应用和网页标签页；打包时通过原生工具自动生成各尺寸。
+- 可选的保守峰值检测：仅检查已选轨道的裁剪范围，提供标记、原始/处理后试听、局部增益与范围调整及撤销。确认后的处理在试听和导出中共用平滑浮点增益包络，先局部降幅再标准化，不受试听音量导出设置影响。
+- 相同轨道数量时，按列表位置沿用上一组勾选（未重新加载波形时导出也适用）；数量不同默认全选，改变立体声拆分会重置。裁剪、音量和局部处理不会跨文件夹继承。
+- 切换文件夹后忽略过期波形请求；增加合成音频的峰值、局部处理、导出与界面回归测试。
 - 打包应用显示 Dock 图标，支持再次打开网页，并在原生退出 / ⌘Q 时清理后台服务器。
 - 增加内置 Python、FFmpeg 和 FFprobe 的 Apple Silicon macOS 26+ 应用/ZIP 构建；继续保留源码版及依赖配置流程。
 

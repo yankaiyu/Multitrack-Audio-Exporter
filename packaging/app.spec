@@ -9,6 +9,7 @@ exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name='Multitrack Audio Expo
           console=False, target_arch='arm64', codesign_identity=None)
 coll = COLLECT(exe, a.binaries, a.datas, name='Multitrack Audio Exporter')
 app = BUNDLE(coll, name='Multitrack Audio Exporter.app',
+    icon=str(root / 'assets/app-icon.icns'),
     bundle_identifier='com.multitrackaudio.exporter',
     info_plist={'LSUIElement': False, 'LSMinimumSystemVersion': '26.0',
                 'CFBundleShortVersionString': '0.1.0', 'CFBundleVersion': '2'})

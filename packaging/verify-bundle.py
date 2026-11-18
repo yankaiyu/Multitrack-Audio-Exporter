@@ -1,8 +1,13 @@
 """Fail the release build if a Mach-O needs a build-machine library."""
 from pathlib import Path
+import plistlib
 import subprocess
 
 bundle = Path('dist/Multitrack Audio Exporter.app')
+with (bundle / 'Contents/Info.plist').open('rb') as handle:
+    metadata = plistlib.load(handle)
+icon = bundle / 'Contents/Resources' / metadata['CFBundleIconFile']
+assert icon.read_bytes() == Path('assets/app-icon.icns').read_bytes(), 'Missing or stale application icon'
 for path in bundle.rglob('*'):
     if not path.is_file() or path.is_symlink():
         continue

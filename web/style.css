@@ -111,6 +111,27 @@ legend { padding: 0 10px 0 0; }
 .range-controls input::-webkit-slider-thumb { appearance: none; background: var(--accent); border: 2px solid #effbd0; border-radius: 50%; height: 17px; pointer-events: auto; width: 17px; }
 .range-controls input::-moz-range-thumb { background: var(--accent); border: 2px solid #effbd0; border-radius: 50%; height: 14px; pointer-events: auto; width: 14px; }
 .waveforms { display: grid; gap: 9px; }
+#selection-status { display: block; margin: 8px 0; }
+#peak-tools { margin: 12px 0; }
+#peak-tools small { display: inline; margin-left: 8px; }
+.peak-layer { position: absolute; pointer-events: none; z-index: 5; }
+.peak-highlight { position: absolute; top: 0; bottom: 0; background: #efaa5233; border-inline: 1px solid #efaa52; pointer-events: none; }
+.peak-flag { position: absolute; top: 0; transform: translateX(-50%); background: #efaa52; color: #201407; border-radius: 3px; padding: 2px 5px; font-size: 12px; pointer-events: auto; }
+.peak-flag.applied { background: #6cb8ae; }
+.peak-badge { color: #efaa52; font-size: 11px; }
+.peak-panel { padding: 12px; border-top: 1px solid #efaa52; }
+.peak-panel p { margin: 6px 0; font-size: 12px; }
+.peak-export-note { color: #efaa52; }
+.peak-fields { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; }
+.peak-fields label { font-size: 12px; }
+.peak-fields input { width: 100%; padding: 6px; }
+.peak-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.peak-actions button { padding: 7px 10px; font-size: 12px; }
+.peak-zoom { position: relative; height: 30px; background: #26302f; margin: 12px 10px; }
+.peak-region { position: absolute; top: 0; bottom: 0; background: #805c2d; }
+.peak-edge { position: absolute; transform: translateX(-50%); padding: 4px; background: #efaa52; color: #201407; touch-action: none; }
+.wave-track.track-collapsed .peak-panel { display: none; }
+.wave-track.is-deselected .peak-layer, .wave-track.is-deselected .peak-panel { opacity: .3; pointer-events: none; }
 .wave-track { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; position: relative; background: #0d1213; }
 .wave-name { color: var(--muted); font: 12px ui-monospace, SFMono-Regular, monospace; min-height: 34px; padding: 7px 145px 7px 8px; }
 .track-select { color: var(--text); display: flex; gap: 7px; align-items: center; cursor: pointer; }

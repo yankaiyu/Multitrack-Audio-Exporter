@@ -4,6 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 test "$(uname -m)" = arm64 || { echo 'Build on an Apple Silicon Mac.'; exit 1; }
 ROOT="$PWD"
+bash packaging/build-icons.sh
 export MACOSX_DEPLOYMENT_TARGET=26.0
 mkdir -p build/downloads build/vendor build/notices dist
 fetch() {

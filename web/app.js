@@ -4,11 +4,14 @@ import { refreshStatus, watch } from "./jobs.js";
 import { levelOptionState } from "./level-options.js";
 import { applyPreviewAudioSettings, PREVIEW_VOLUME_MAX, PREVIEW_VOLUME_MIN, resumePreviewAudio } from "./preview-audio.js";
 import { displayTimeLimit, normalizeTrimRange, timeAtPointer } from "./trim-geometry.js";
+import { selectionForCount, audibleSelection } from "./track-selection.js";
+import { PeakEditor } from "./peak-editor.js";
 
 const ZIP_PREFERENCE_KEY = "packageZip";
 const OPEN_FINDER_PREFERENCE_KEY = "openFinderOnComplete";
 const SPLIT_STEREO_PREFERENCE_KEY = "splitStereo";
 const PREVIEW_LIMITER_PREFERENCE_KEY = "previewLimiter";
+const AUTO_AUDIBLE_PREFERENCE_KEY = "autoAudibleOnLoad";
 let selectingFolder = false;
 
 let waveformTracks = [];
@@ -18,7 +21,31 @@ let playbackDrag = null;
 let lastPreviewRow = null;
 let allPreviewPlaying = false;
 let syncingSharedPlayback = false;
+let previousSelection = null;
+let waveformEpoch = 0;
+const peakEditor = new PeakEditor({
+  row: (name) => document.querySelector(`.wave-track[data-track="${encodeURIComponent(name)}"]`),
+  bounds: previewBounds,
+  stop: stopAllTrackPreviews,
+  audition: (row, start, end) => {
+    if (end <= start) return;
+    lastPreviewRow = row;
+    const audio = row.querySelector(".track-preview-audio");
+    audio.dataset.previewPosition = String(start);
+    startTrackPreview(row);
+    audio.dataset.auditionEnd = String(end);
+  },
+});
+function captureSelection() {
+  const controls = [...document.querySelectorAll("input[name=selectedFiles]")];
+  if (controls.length) previousSelection = { values: controls.map((c) => c.checked), splitStereo: $("#split-stereo").checked };
+}
 function resetWaveformState() {
+  captureSelection();
+  waveformEpoch++;
+  peakEditor.reset();
+  $("#selection-status").textContent = previousSelection ? t("selectionReuseHelp") : "";
+  $("#load-waveforms").disabled = false;
   document.querySelectorAll(".track-preview-audio").forEach((audio) => audio.pause());
   waveformTracks = [];
   waveformDuration = 0;
@@ -270,6 +297,7 @@ function updateTrackSelectionState(row) {
   const selected = row.querySelector("input[name=selectedFiles]").checked;
   const individualTrimEnabled = $("#individual-trim").checked;
   row.classList.toggle("is-deselected", !selected);
+  row.querySelectorAll(".peak-flag, .peak-panel input, .peak-panel button").forEach((control) => { control.disabled = !selected; });
   row.querySelectorAll(".track-trim-start, .track-trim-end, .track-trim-start-range, .track-trim-end-range").forEach((input) => {
     input.disabled = !selected || !individualTrimEnabled;
   });
@@ -374,6 +402,7 @@ function stopTrackPreview(row, reset = false, resetPosition = null) {
 function startTrackPreview(row) {
   const audio = row.querySelector(".track-preview-audio");
   if (!audio) return;
+  delete audio.dataset.auditionEnd;
   allPreviewPlaying = false;
   document.querySelectorAll(".wave-track").forEach((other) => { if (other !== row) stopTrackPreview(other); });
   const bounds = previewBounds(row);
@@ -457,6 +486,7 @@ function startAllTrackPreviews() {
   allPreviewPlaying = true;
   rows.forEach((row) => {
     const audio = row.querySelector(".track-preview-audio");
+    delete audio.dataset.auditionEnd;
     const bounds = previewBounds(row);
     const savedPosition = Number(audio.dataset.previewPosition);
     const position = shared
@@ -513,6 +543,18 @@ function renderWaveforms(preview) {
   updateIndividualTrimMode();
   $("#waveform-status").textContent = t("waveformsReady");
   $("#waveform-status").classList.remove("waveform-log");
+  const autoAudible = $("#auto-audible-on-load").checked;
+  const selectedMask = autoAudible
+    ? audibleSelection(preview, Number(document.querySelector("select[name=silenceThreshold]").value))
+    : selectionForCount(previousSelection, preview.length, $("#split-stereo").checked);
+  const reused = previousSelection?.values?.length === preview.length && previousSelection.splitStereo === $("#split-stereo").checked;
+  document.querySelectorAll("input[name=selectedFiles]").forEach((control, i) => {
+    control.checked = selectedMask[i];
+    updateTrackSelectionState(control.closest(".wave-track"));
+  });
+  $("#selection-status").textContent = autoAudible ? t("autoAudibleApplied") : reused ? t("selectionReused") : t("selectionReuseHelp");
+  captureSelection();
+  peakEditor.attach(preview);
   syncTrim();
   document.querySelectorAll(".track-preview-audio").forEach((audio) => {
     const row = audio.closest(".wave-track");
@@ -528,6 +570,10 @@ function renderWaveforms(preview) {
     });
     applyPreviewAudioSettings(row, $("#preview-limiter"));
     audio.addEventListener("timeupdate", () => {
+      if (audio.dataset.auditionEnd && audio.currentTime >= Number(audio.dataset.auditionEnd)) {
+        stopTrackPreview(row);
+        delete audio.dataset.auditionEnd;
+      }
       audio.dataset.previewPosition = String(audio.currentTime);
       if ($("#linked-playheads").checked) syncSharedPlaybackPosition(row, audio.currentTime);
       const bounds = previewBounds(row);
@@ -557,17 +603,24 @@ function renderWaveforms(preview) {
 
 function autoDeselectSilentTracks() {
   const threshold = Number(document.querySelector("select[name=silenceThreshold]").value);
-  waveformTracks.forEach((track) => {
+  const mask = audibleSelection(waveformTracks, threshold);
+  waveformTracks.forEach((track, index) => {
     const row = document.querySelector(`.wave-track[data-track="${encodeURIComponent(track.name)}"]`);
     if (!row) return;
-    row.querySelector("input[name=selectedFiles]").checked = track.peak !== null && track.peak !== undefined && Number(track.peak) > threshold;
+    row.querySelector("input[name=selectedFiles]").checked = mask[index];
     updateTrackSelectionState(row);
   });
 }
 
-function pollWaveforms(job) {
+function pollWaveforms(job, epoch) {
+  let polling = false;
   const timer = setInterval(async () => {
+    if (epoch !== waveformEpoch) { clearInterval(timer); return; }
+    if (polling) return;
+    polling = true;
+    try {
     const data = await api(`/api/job/${job}`);
+    if (epoch !== waveformEpoch) { clearInterval(timer); return; }
     $("#waveform-status").textContent = data.log || t("loadingWaveforms");
     $("#waveform-status").scrollTop = $("#waveform-status").scrollHeight;
     if (data.status !== "running") {
@@ -576,15 +629,23 @@ function pollWaveforms(job) {
       if (data.status === "done") renderWaveforms(data.preview);
       else $("#waveform-status").textContent = data.log || t("error");
     }
+    } catch (error) {
+      clearInterval(timer);
+      if (epoch === waveformEpoch) { $("#load-waveforms").disabled = false; $("#waveform-status").textContent = error.message; }
+    } finally { polling = false; }
   }, 500);
 }
 
 $("#convert-form").addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (peakEditor.busy) { alert(t("peakBusy")); return; }
+  for (const state of peakEditor.states.values()) peakEditor.close(state);
   $("#convert-button").disabled = true;
   const form = new FormData(event.currentTarget);
   const payload = Object.fromEntries(form);
   payload.language = currentLanguage();
+  payload.peakEdits = peakEditor.payload();
+  payload.selectionMask = previousSelection;
   payload.enforceSafety = $("#enforce-safety").checked;
   payload.applyPreviewGain = $("#apply-preview-gain").checked;
   const selectionControls = document.querySelectorAll("input[name=selectedFiles]");
@@ -643,12 +704,14 @@ $("#output-format").addEventListener("change", updateOutputFormat);
 $("#load-waveforms").addEventListener("click", async () => {
   const source = $("#source").value.trim();
   if (!source) { alert(t("chooseSourceFirst")); return; }
+  resetWaveformState();
+  const epoch = waveformEpoch;
   $("#load-waveforms").disabled = true;
   $("#waveform-status").textContent = t("loadingWaveforms");
   $("#waveform-status").classList.add("waveform-log");
   $("#waveforms").innerHTML = "";
-  try { pollWaveforms((await api("/api/waveforms", { method:"POST", body:JSON.stringify({source, language:currentLanguage(), splitStereo: $("#split-stereo").checked}) })).job); }
-  catch (error) { $("#load-waveforms").disabled = false; $("#waveform-status").textContent = error.message; }
+  try { pollWaveforms((await api("/api/waveforms", { method:"POST", body:JSON.stringify({source, language:currentLanguage(), splitStereo: $("#split-stereo").checked}) })).job, epoch); }
+  catch (error) { if (epoch === waveformEpoch) { $("#load-waveforms").disabled = false; $("#waveform-status").textContent = error.message; } }
 });
 $("#trim-start").addEventListener("input", () => syncTrim("start"));
 $("#trim-end").addEventListener("input", () => syncTrim("end"));
@@ -657,6 +720,16 @@ $("#trim-end-range").addEventListener("input", (event) => { $("#trim-end").value
 document.querySelectorAll("input[name=trimMode]").forEach((input) => input.addEventListener("change", updateIndividualTrimMode));
 document.querySelectorAll("input[name=mode]").forEach((input) => input.addEventListener("change", updateLevelOptions));
 $("#auto-deselect-silent").addEventListener("click", autoDeselectSilentTracks);
+const autoAudibleToggle = $("#auto-audible-on-load");
+autoAudibleToggle.checked = localStorage.getItem(AUTO_AUDIBLE_PREFERENCE_KEY) === "true";
+autoAudibleToggle.addEventListener("change", () => {
+  localStorage.setItem(AUTO_AUDIBLE_PREFERENCE_KEY, String(autoAudibleToggle.checked));
+  if (autoAudibleToggle.checked && waveformTracks.length) {
+    autoDeselectSilentTracks();
+    captureSelection();
+    $("#selection-status").textContent = t("autoAudibleApplied");
+  }
+});
 $("#waveforms").addEventListener("input", (event) => {
   const row = event.target.closest(".wave-track");
   if (event.target.matches("input[name=selectedFiles]")) {
@@ -677,6 +750,8 @@ $("#waveforms").addEventListener("click", (event) => {
   button.setAttribute("aria-expanded", String(!collapsed));
   button.title = t(collapsed ? "expandTrack" : "collapseTrack");
   button.textContent = t(collapsed ? "expandTrack" : "collapseTrack");
+  peakEditor.layout();
+  if (!collapsed) { if ($("#individual-trim").checked) syncIndividualTrim(row); else syncTrim(); }
 });
 $("#waveforms").addEventListener("click", (event) => {
   const muteButton = event.target.closest(".track-preview-mute");
@@ -806,6 +881,8 @@ if (savedSplitStereoPreference !== null) splitStereoCheckbox.checked = savedSpli
 splitStereoCheckbox.addEventListener("change", () => {
   localStorage.setItem(SPLIT_STEREO_PREFERENCE_KEY, String(splitStereoCheckbox.checked));
   resetWaveformState();
+  previousSelection = null;
+  $("#selection-status").textContent = "";
   $("#waveform-status").textContent = t("splitStereoReloadWaveform");
 });
 initializeLanguage().catch((error) => {

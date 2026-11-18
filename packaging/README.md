@@ -12,7 +12,7 @@ The build downloads checksum-pinned FFmpeg 8.1.2 and LAME 3.100 sources, builds 
 
 The initial compatibility floor is macOS 26, not all macOS versions supported by M1 hardware. Test on a clean Mac before declaring wider compatibility. Developer ID signing and notarization are intentionally absent. PyInstaller's automatic local ad-hoc signature is required by Apple Silicon and needs no developer account.
 
-Upload the ZIP and `SHA256SUMS.txt` to a GitHub Release alongside the normal source archives. Keep binaries and build dependencies out of git. The app includes the exact FFmpeg/LAME sources, build script and license notices in `Contents/Resources/ThirdParty` (or its linked Frameworks location). Keep these with redistributed copies. A custom app icon and older-macOS builds can be added separately.
+Upload the ZIP and `SHA256SUMS.txt` to a GitHub Release alongside the normal source archives. Keep binaries and build dependencies out of git. The app includes the exact FFmpeg/LAME sources, build script and license notices in `Contents/Resources/ThirdParty` (or its linked Frameworks location). Keep these with redistributed copies. The application icon is built from `assets/app-icon.png` using native macOS tools. Older-macOS builds can be added separately.
 
 ---
 
@@ -23,3 +23,5 @@ Upload the ZIP and `SHA256SUMS.txt` to a GitHub Release alongside the normal sou
 构建会验证源码校验值、内置依赖、检查 arm64 与动态库路径，并用合成的超 0 dBFS 音频验证转换和波形。首次兼容下限定为 macOS 26，不能将 M1 支持等同于支持所有旧 macOS。发布前仍应在未安装开发环境的 Mac 上实测。
 
 将 `dist` 内的 ZIP 和校验文件作为 GitHub Release 附件，保留源码下载。尚未使用 Developer ID 签名或公证；自动的本地 ad-hoc 签名无需账号。FFmpeg/LAME 源码、许可与构建脚本随包附带，分发时应保留。
+
+应用图标由 `assets/app-icon.png` 通过 macOS 原生工具自动生成，无需额外图像处理依赖。

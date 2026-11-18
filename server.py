@@ -22,6 +22,7 @@ from urllib.parse import urlparse
 
 from audio_tools import (AUDIO_CONTENT_TYPES, INPUT_EXTENSIONS, MAC_BIN_DIRS, OUTPUT_FORMATS,
                          WAV_CODECS, parallel_map, peak_of_audio, peak_of_mp3, tool_path)
+from peak_processing import detect_peaks, envelope_filter, validate_edits
 
 ROOT = Path(__file__).resolve().parent
 WEB_ROOT = ROOT / "web"
@@ -195,7 +196,8 @@ def split_stereo_sources(job_id: str, files: list[Path], workspace: Path, enable
 
 def sanitized_inputs(job_id: str, files: list[Path], workspace: Path,
                      silence_threshold: float, trim_start: float, trim_end: float | None, workers: int,
-                     track_trims: dict[str, dict] | None = None) -> tuple[dict[Path, Path], set[Path]]:
+                     track_trims: dict[str, dict] | None = None,
+                     peak_edits: dict[str, list] | None = None) -> tuple[dict[Path, Path], set[Path]]:
     """Make finite 32-bit float working WAVs and identify blank input channels.
 
     Some float recorders write NaN/Inf samples in unused channels. Those samples make
@@ -214,7 +216,6 @@ def sanitized_inputs(job_id: str, files: list[Path], workspace: Path,
             channels = int(probe.stdout.strip())
         except ValueError:
             raise RuntimeError(localized(job_language(job_id), "couldNotReadChannels", file=source.name))
-        expressions = "|".join(f"if(isnan(val({channel}))+isinf(val({channel})),0,val({channel}))" for channel in range(channels))
         # Working files are always WAV. Retaining an MP3/M4A input extension here
         # would make FFmpeg select the wrong container for float PCM.
         cleaned = workspace / f"{uuid.uuid4().hex}.wav"
@@ -225,7 +226,10 @@ def sanitized_inputs(job_id: str, files: list[Path], workspace: Path,
         if source_start < 0 or (source_end is not None and source_end <= source_start):
             raise ValueError(localized(job_language(job_id), "trimEndMustFollowStart", file=source.name))
         trim = f"atrim=start={source_start}" + (f":end={source_end}" if source_end is not None else "")
-        command = [ffmpeg, "-hide_banner", "-y", "-i", str(source), "-af", f"{trim},aeval=exprs='{expressions}':c=same",
+        # atrim retains original timestamps, so envelope times stay source-relative.
+        edits = (peak_edits or {}).get(source.name, [])
+        filters = f"asetpts=PTS-STARTPTS,{trim},{envelope_filter(channels, edits)},asetpts=PTS-STARTPTS"
+        command = [ffmpeg, "-hide_banner", "-y", "-i", str(source), "-af", filters,
                    "-c:a", "pcm_f32le", str(cleaned)]
         if run_process(job_id, command) != 0:
             raise RuntimeError(localized(job_language(job_id), "couldNotSanitizeFloat", file=source.name))
@@ -298,7 +302,7 @@ def waveform_job(job_id: str, source_text: str, language: str = "zh", split_ster
             AUDIO_FILES[audio_token] = file
             # Use the same peak measurement used by export decisions, so the UI can
             # optionally deselect tracks below its empty-track threshold.
-            previews.append({"name": file.name, "duration": duration, "peak": peak_of_audio(file), "stereo": channels == 2,
+            previews.append({"name": file.name, "duration": duration, "peak": peak_of_audio(file, envelope_filter(channels, [])), "stereo": channels == 2,
                              "image": f"/api/waveform/{token}", "audio": f"/api/audio/{audio_token}"})
             append_localized_log(job_id, "waveformProgress", current=index + 1, total=preview_total, file=file.name)
             set_localized_progress(job_id, round((index + 1) / preview_total * 100), "generatingWaveforms", current=index + 1, total=preview_total)
@@ -365,6 +369,12 @@ def _convert_job(job_id: str, options: dict) -> None:
             split_workspace = tempfile.TemporaryDirectory(prefix="multitrack-audio-split-")
             files = split_stereo_sources(job_id, files, Path(split_workspace.name), True)
         selected = options.get("selectedFiles")
+        mask = options.get("selectionMask")
+        if selected is None and isinstance(mask, dict) and mask.get("splitStereo") == split_stereo:
+            values = mask.get("values")
+            if isinstance(values, list) and len(values) == len(files) and all(type(v) is bool for v in values):
+                selected = [file.name for file, enabled in zip(files, values) if enabled]
+                append_localized_log(job_id, "selectionReused")
         if selected is not None:
             if isinstance(selected, str):
                 selected = [selected]
@@ -396,6 +406,13 @@ def _convert_job(job_id: str, options: dict) -> None:
         trim_start = float(options.get("trimStart") or 0)
         trim_end = float(options["trimEnd"]) if options.get("trimEnd") else None
         track_trims = options.get("trackTrims") or {}
+        peak_edits = options.get("peakEdits") or {}
+        if not isinstance(peak_edits, dict):
+            raise ValueError(localized(job_language(job_id), "peakInvalidEdits"))
+        try:
+            peak_edits = {name: validate_edits(edits) for name, edits in peak_edits.items()}
+        except ValueError:
+            raise ValueError(localized(job_language(job_id), "peakInvalidEdits")) from None
         if not isinstance(track_trims, dict):
             raise ValueError(localized(job_language(job_id), "invalidTrackTrims"))
         if trim_start < 0 or (trim_end is not None and trim_end <= trim_start):
@@ -425,7 +442,9 @@ def _convert_job(job_id: str, options: dict) -> None:
             raise ValueError(localized(job_language(job_id), "missingFfmpeg"))
         with tempfile.TemporaryDirectory(prefix="multitrack-audio-export-") as temp:
             set_localized_progress(job_id, 5, "sanitizingAndMeasuring")
-            cleaned, blank = sanitized_inputs(job_id, files, Path(temp), silence_threshold, trim_start, trim_end, workers, track_trims)
+            cleaned, blank = sanitized_inputs(job_id, files, Path(temp), silence_threshold, trim_start, trim_end, workers, track_trims, peak_edits)
+            if any(peak_edits.get(file.name) for file in files):
+                append_localized_log(job_id, "peakEditsApplied")
             set_localized_progress(job_id, 20, "sanitizingComplete")
             active = [file for file in files if file not in blank]
             # Empty recorder channels are still included in the share package, but they stay silent.
@@ -584,6 +603,77 @@ def _convert_job(job_id: str, options: dict) -> None:
             JOBS[job_id]["status"] = "error"
 
 
+def peak_job(job_id: str, data: dict, render: bool = False) -> None:
+    """Analyze registered preview sources, or render confirmed edits asynchronously."""
+    language = job_language(job_id)
+    def track_process(process, active):
+        with JOB_PROCESSES_LOCK:
+            group = JOB_PROCESSES.setdefault(job_id, set())
+            if active:
+                group.add(process)
+            else:
+                group.discard(process)
+        if active and job_cancelled(job_id):
+            process.terminate()
+    try:
+        tracks = data.get("tracks", [])
+        if not isinstance(tracks, list) or not 1 <= len(tracks) <= 256:
+            raise ValueError("peakInvalidEdits")
+        ffmpeg, ffprobe = tool_path("ffmpeg"), tool_path("ffprobe")
+        if not ffmpeg or not ffprobe:
+            raise ValueError("missingFfmpegProbe")
+        results = []
+        for index, track in enumerate(tracks):
+            if job_cancelled(job_id):
+                raise JobCancelled()
+            # Accept only opaque tokens issued by waveform loading, never paths.
+            source = AUDIO_FILES.get(str(track.get("audio", "")).removeprefix("/api/audio/"))
+            if source is None or not source.is_file():
+                raise ValueError("peakSourceMissing")
+            probe = subprocess.run([ffprobe, "-v", "error", "-select_streams", "a:0",
+                                    "-show_entries", "stream=channels,sample_rate:format=duration",
+                                    "-of", "json", str(source)], capture_output=True, text=True, check=True)
+            metadata = json.loads(probe.stdout)
+            channels = int(metadata["streams"][0]["channels"])
+            rate = int(metadata["streams"][0]["sample_rate"])
+            duration = float(metadata["format"]["duration"])
+            if render:
+                edits = validate_edits(track.get("edits", []), duration)
+                cache = source.parent / ".multitrack-audio-exporter-preview"
+                cache.mkdir(exist_ok=True)
+                token = uuid.uuid4().hex
+                audio, image = cache / f"edit-{token}.wav", cache / f"edit-{token}.png"
+                if run_process(job_id, [ffmpeg, "-v", "error", "-y", "-i", str(source), "-af",
+                                       f"asetpts=PTS-STARTPTS,{envelope_filter(channels, edits)}",
+                                       "-c:a", "pcm_f32le", str(audio)]) != 0:
+                    raise ValueError("peakAnalysisFailed")
+                split = ":split_channels=1" if channels == 2 else ""
+                if run_process(job_id, [ffmpeg, "-v", "error", "-y", "-i", str(audio), "-filter_complex",
+                                       f"showwavespic=s=1400x128:colors=0xD2F26C{split}",
+                                       "-frames:v", "1", str(image)]) != 0:
+                    raise ValueError("peakAnalysisFailed")
+                AUDIO_FILES[token] = audio
+                WAVEFORM_FILES[token] = image
+                results.append({"name": track["name"], "audio": f"/api/audio/{token}", "image": f"/api/waveform/{token}"})
+            else:
+                start, end = float(track.get("start", 0)), float(track.get("end", duration))
+                if not math.isfinite(start) or not math.isfinite(end) or start < 0 or end <= start or end > duration + .001:
+                    raise ValueError("peakInvalidEdits")
+                results.append({"name": track["name"], "candidates": detect_peaks(ffmpeg, source, channels, rate, start, min(end, duration), track_process)})
+            set_localized_progress(job_id, round((index + 1) / len(tracks) * 100), "peakProgress", current=index + 1, total=len(tracks))
+        with JOBS_LOCK:
+            JOBS[job_id].update(status="done", results=results, progress=100)
+    except JobCancelled:
+        with JOBS_LOCK:
+            JOBS[job_id].update(status="cancelled")
+    except Exception as error:
+        # Only our stable error keys are translated; do not expose internal paths.
+        key = str(error) if isinstance(error, ValueError) and str(error) in {
+            "peakInvalidEdits", "peakAnalysisFailed", "peakSourceMissing", "missingFfmpegProbe"} else "peakAnalysisFailed"
+        with JOBS_LOCK:
+            JOBS[job_id].update(status="cancelled" if JOBS[job_id].get("cancel_requested") else "error", log=localized(language, key))
+
+
 class Handler(SimpleHTTPRequestHandler):
     def end_headers(self) -> None:
         # This is a local development-style app: always serve the newest UI.
@@ -711,6 +801,13 @@ class Handler(SimpleHTTPRequestHandler):
                                     "progressLabel": localized(data.get("language"), "waitingToStart"), "language": data.get("language", "en")}
                 threading.Thread(target=waveform_job, args=(job_id, data["source"], data.get("language", "zh"),
                                                              data.get("splitStereo") in {True, "on", "true", "1"}), daemon=True).start()
+                self.json_response({"job": job_id})
+            elif self.path in {"/api/peak-detect", "/api/peak-render"}:
+                job_id = uuid.uuid4().hex
+                with JOBS_LOCK:
+                    JOBS[job_id] = {"status": "running", "cancel_requested": False, "log": "", "progress": 0,
+                                    "language": data.get("language", "en")}
+                threading.Thread(target=peak_job, args=(job_id, data, self.path == "/api/peak-render"), daemon=True).start()
                 self.json_response({"job": job_id})
             elif self.path == "/api/dependencies":
                 if getattr(sys, "frozen", False):
