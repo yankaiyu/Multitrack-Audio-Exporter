@@ -86,12 +86,63 @@ const path = require('node:path');
     await page.getByRole('button', { name: 'Apply', exact: true }).click();
     await page.locator('.peak-flag.applied').waitFor();
     await page.selectOption('#output-format', 'wav');
+    // Transient control is opt-in, tracks applied settings, and affects export
+    // independently of preview gain. All fixtures are synthesized by our server.
+    await first.locator('.transient-panel summary').click();
+    assert.equal(await first.locator('.transient-enable').isChecked(), false);
+    assert.equal(await first.locator('.transient-drive').isDisabled(), true);
+    await first.locator('.transient-enable').check();
+    await first.locator('.transient-after').waitFor();
+    await page.waitForFunction(() => !document.querySelector('.transient-after').disabled);
+    assert.equal(await first.locator('.transient-drive').inputValue(), '0');
+    await first.locator('.transient-drive').fill('6');
+    assert.equal(await first.locator('.transient-after').isDisabled(), true);
+    await first.locator('.transient-apply').click();
+    await page.waitForFunction(() => !document.querySelector('.transient-after').disabled);
+    assert.match(await first.locator('.transient-status').textContent(), /Maximum reduction/);
+    const measuredReduction = Number((await first.locator('.transient-status').textContent()).match(/Maximum reduction: ([\d.]+)/)[1]);
+    assert.ok(measuredReduction <= 6.1); // No release-stage gain collapse.
+    // A/B uses the same timeline position, not the beginning of the trim.
+    await first.locator('audio').evaluate(audio => { audio.currentTime = 1.25; audio.dataset.previewPosition = '1.25'; });
+    await first.locator('.transient-before').click();
+    await page.waitForFunction(() => {
+      const a = document.querySelector('.track-preview-audio'); return !a.paused && a.currentTime >= 1.25;
+    });
+    const beforePosition = await first.locator('audio').evaluate(a => a.currentTime);
+    await first.locator('.transient-after').click();
+    await page.waitForFunction(() => !document.querySelector('.track-preview-audio').paused);
+    const afterPosition = await first.locator('audio').evaluate(a => a.currentTime);
+    assert.ok(afterPosition >= beforePosition - .1 && afterPosition < beforePosition + 1);
+    await first.locator('.track-preview-button').click();
+    await page.fill('#trim-start', '1');
+    assert.equal(await first.locator('.transient-after').isDisabled(), true);
+    assert.match(await first.locator('.transient-status').textContent(), /changed/);
+    await first.locator('.transient-apply').click();
+    await page.waitForFunction(() => !document.querySelector('.transient-after').disabled);
+    await first.locator('input[name=selectedFiles]').uncheck();
+    assert.equal(await first.locator('.transient-enable').isDisabled(), true);
+    await first.locator('input[name=selectedFiles]').check();
+    assert.equal(await first.locator('.transient-enable').isDisabled(), false);
+    // Language changes preserve DSP settings and translate the expanded panel.
+    await page.selectOption('#language-select', 'ja');
+    await page.waitForFunction(() => document.querySelector('.transient-panel summary').textContent.includes('トランジェント'));
+    assert.equal(await first.locator('.transient-drive').inputValue(), '6');
+    await page.selectOption('#language-select', 'en');
+    await page.waitForFunction(() => document.querySelector('.transient-panel summary').textContent.includes('Transient'));
+    // Checkbox and label share a row; panel must not alter marker geometry.
+    const sameRow = await first.locator('.transient-enable').evaluate(input => {
+      const a = input.getBoundingClientRect(), b = input.nextElementSibling.getBoundingClientRect();
+      return Math.abs((a.top + a.bottom) / 2 - (b.top + b.bottom) / 2) < 3;
+    });
+    assert.ok(sameRow);
+    await page.screenshot({ path: '/tmp/mae-transient-ui.png', fullPage: true });
     await page.uncheck('#open-output-toggle');
     const request = page.waitForRequest((req) => req.url().endsWith('/api/convert'));
     await page.click('#convert-button');
     const payload = (await request).postDataJSON();
     assert.equal(payload.peakEdits['Track01.wav'].length, 1);
     assert.equal(payload.applyPreviewGain, false);
+    assert.deepEqual(payload.transientControls['Track01.wav'], { enabled: true, drive: 6 });
     await page.waitForFunction(() => !document.querySelector('#convert-button').disabled);
     assert.equal(await page.locator('#job-state').textContent(), 'Done');
     // Switching folders invalidates old processing results and clears all edits.

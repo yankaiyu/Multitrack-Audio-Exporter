@@ -4,6 +4,7 @@
 
 ### Added
 
+- Optional per-track transient control (off by default), 0–12 dB drive, same-position before/after audition, measured maximum gain reduction and limited-time percentage. Processing uses a stereo-linked 5 ms lookahead / 50 ms release-time-constant gain envelope relative to the trimmed, locally edited signal's peak; 0 dB bypasses. Bounded-memory double-float processing preserves headroom above 0 dBFS until final normalization/encoding, without shifting audio. It affects export independently of preview-gain settings; audition remains before final normalization and retains preview gain/limiter settings. Trim or local-edit changes require reapplying the effect; stale previews cannot be played/exported as if current. Added synthetic float, flat-top, silence, short-file, stereo, timing, preview/export parity and browser regressions. All seven locales updated.
 - Remembered, opt-in audible-track selection on waveform load. It takes precedence over reused selections, uses the existing empty-track threshold, and still allows manual overrides. Enabling it on loaded tracks applies immediately; later threshold changes do not silently replace manual selections.
 - Added a custom multitrack-waveform/export icon for the macOS app and browser tab, with reproducible native icon-size generation during packaging.
 - Optional conservative peak detection within selected trim ranges, review markers, original/edited audition, adjustable local gain/ranges and undo. Confirmed edits use the same smooth float envelope in preview and export, before normalization, independently of preview-volume export settings.
@@ -42,6 +43,7 @@
 
 ### 新增
 
+- 增加默认关闭的逐轨瞬态控制：0–12 dB 驱动增益、同位置处理前后试听、实测最大降幅和限幅时间占比。以裁剪及局部修正后的峰值为参考，采用立体声联动、5 毫秒前瞻和 50 毫秒释放时间常数的增益包络；0 dB 直接旁路。使用内存有界的双精度浮点处理，在最终标准化/编码前保留超过 0 dBFS 的余量，不移动音频时序。此功能独立于试听增益选项，会应用到导出；试听处于最终标准化之前，仍受试听音量/限幅器影响。修改裁剪或局部修正后需重新应用，防止使用过期试听结果。新增合成浮点、平顶瞬态、静音、短文件、立体声、时序、试听/导出一致性和浏览器回归测试；更新全部七种语言。
 - 增加可记忆的“加载波形后自动只选有声轨道”开关，初次默认关闭。开启时优先于上一组勾选，使用现有底噪阈值，并允许手动改选。已有波形时开启会立即筛选；之后调整阈值不会静默覆盖手动勾选。
 - 增加多轨波形与导出箭头应用图标，用于 macOS 应用和网页标签页；打包时通过原生工具自动生成各尺寸。
 - 可选的保守峰值检测：仅检查已选轨道的裁剪范围，提供标记、原始/处理后试听、局部增益与范围调整及撤销。确认后的处理在试听和导出中共用平滑浮点增益包络，先局部降幅再标准化，不受试听音量导出设置影响。

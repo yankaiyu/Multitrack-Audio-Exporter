@@ -131,6 +131,17 @@ legend { padding: 0 10px 0 0; }
 .peak-region { position: absolute; top: 0; bottom: 0; background: #805c2d; }
 .peak-edge { position: absolute; transform: translateX(-50%); padding: 4px; background: #efaa52; color: #201407; touch-action: none; }
 .wave-track.track-collapsed .peak-panel { display: none; }
+.transient-panel { padding: 8px 12px; border-top: 1px solid var(--line); font-size: 13px; }
+.transient-panel summary { cursor: pointer; color: var(--muted); }
+.transient-panel p { margin: 8px 0; color: var(--muted); }
+.transient-panel .toggle-option { display: flex; align-items: center; gap: 8px; }
+.transient-drive-row { display: flex; align-items: center; gap: 16px; margin: 10px 0; }
+.transient-drive-row label { flex: 0 1 180px; }
+.transient-drive-row input[type=range] { flex: 1; min-width: 60px; }
+.transient-drive-row input[type=range] { accent-color: var(--accent); }
+.transient-panel button[aria-pressed=true] { background: var(--accent); color: var(--accent-ink); }
+.wave-track.track-collapsed .transient-panel { display: none; }
+.wave-track.is-deselected .transient-panel { opacity: .35; }
 .wave-track.is-deselected .peak-layer, .wave-track.is-deselected .peak-panel { opacity: .3; pointer-events: none; }
 .wave-track { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; position: relative; background: #0d1213; }
 .wave-name { color: var(--muted); font: 12px ui-monospace, SFMono-Regular, monospace; min-height: 34px; padding: 7px 145px 7px 8px; }

@@ -1,5 +1,6 @@
 import { $, api } from "./core.js";
 import { t, currentLanguage } from "./i18n.js";
+import { TransientControls } from "./transient-controls.js";
 
 // Separate editing state from trim, selection and preview-only volume settings.
 export class PeakEditor {
@@ -27,7 +28,7 @@ export class PeakEditor {
   attach(tracks) {
     for (const track of tracks) {
       const row = this.hooks.row(track.name);
-      const state = { track, row, candidates: [], committed: track, draft: null, active: null };
+      const state = { track, row, candidates: [], committed: track, localCommitted: track, draft: null, active: null };
       this.states.set(track.name, state);
       const layer = document.createElement("div");
       layer.className = "peak-layer";
@@ -39,6 +40,7 @@ export class PeakEditor {
       badge.className = "peak-badge";
       row.querySelector(".wave-name").append(badge);
       row.querySelector(".wave-image").addEventListener("load", () => this.layout());
+      state.transient = new TransientControls(this, state);
     }
     $("#peak-tools").classList.remove("hidden");
     this.refresh();
@@ -56,11 +58,26 @@ export class PeakEditor {
       state.candidates.filter((item) => item.applied).map(({ start, end, db }) => ({ start, end, db }))]));
   }
 
+  transientPayload() {
+    return Object.fromEntries([...this.states].map(([name, state]) => [name, state.transient.payload()]));
+  }
+
+  checkTransientBounds() {
+    for (const state of this.states.values()) state.transient.checkBounds();
+  }
+
+  transientReady(row = null) {
+    this.checkTransientBounds();
+    return [...this.states.values()].filter(s => (!row || s.row === row) && s.transient.selected())
+      .every(s => !s.transient.enabled || s.transient.ready);
+  }
+
   async job(path, tracks) {
     const epoch = this.epoch;
     this.busy = true;
     $("#detect-peaks").disabled = true;
     document.querySelectorAll(".peak-flag").forEach((button) => { button.disabled = true; });
+    for (const state of this.states.values()) state.transient.draw();
     try {
       const { job } = await api(path, { method: "POST", body: JSON.stringify({ tracks, language: currentLanguage() }) });
       if (epoch !== this.epoch) { await api("/api/cancel", { method: "POST", body: JSON.stringify({ job }) }); return null; }
@@ -83,6 +100,7 @@ export class PeakEditor {
         this.busy = false;
         $("#detect-peaks").disabled = false;
         document.querySelectorAll(".peak-flag").forEach((button) => { button.disabled = button.closest(".wave-track").classList.contains("is-deselected"); });
+        for (const state of this.states.values()) state.transient.draw();
       }
     }
   }
@@ -127,6 +145,7 @@ export class PeakEditor {
 
   refresh() {
     for (const state of this.states.values()) {
+      state.transient.draw();
       const layer = state.row.querySelector(".peak-layer");
       layer.replaceChildren();
       const applied = state.candidates.filter((c) => c.applied).length;
@@ -228,6 +247,8 @@ export class PeakEditor {
       if (!media) return;
       Object.assign(state.active, draft, { applied: true, dismissed: false });
       state.committed = media;
+      state.localCommitted = media;
+      state.transient.invalidate();
       this.close(state); this.refresh();
     });
     action(state.active.applied ? "peakUndo" : "peakKeep", async () => {
@@ -236,6 +257,8 @@ export class PeakEditor {
         const result = remaining.length ? await this.job("/api/peak-render", [{ name: state.track.name, audio: state.track.audio, edits: remaining }]) : [state.track];
         if (!result) return;
         state.committed = result[0];
+        state.localCommitted = result[0];
+        state.transient.invalidate();
       }
       state.active.applied = false;
       state.active.dismissed = true;

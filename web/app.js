@@ -32,7 +32,7 @@ const peakEditor = new PeakEditor({
     lastPreviewRow = row;
     const audio = row.querySelector(".track-preview-audio");
     audio.dataset.previewPosition = String(start);
-    startTrackPreview(row);
+    startTrackPreview(row, true);
     audio.dataset.auditionEnd = String(end);
   },
 });
@@ -107,6 +107,7 @@ function syncTrim(changed = "") {
   $("#trim-fill").style.width = `${(end - start) / waveformDuration * 100}%`;
   document.querySelectorAll(".wave-track:not(.individual-trim-active)").forEach((row) => syncSharedOverlay(row, start, end));
   reconcileTrackPreviews();
+  peakEditor.checkTransientBounds();
 }
 
 function syncSharedOverlay(row, start, end) {
@@ -243,6 +244,7 @@ function syncIndividualTrim(row) {
   const fill = row.querySelector(".track-range-fill");
   syncIndividualOverlay(row, start, end, fill);
   reconcileTrackPreviews(row);
+  peakEditor.checkTransientBounds();
 }
 
 function syncIndividualOverlay(row, start, end, fill = row.querySelector(".track-range-fill")) {
@@ -297,6 +299,7 @@ function updateTrackSelectionState(row) {
   const selected = row.querySelector("input[name=selectedFiles]").checked;
   const individualTrimEnabled = $("#individual-trim").checked;
   row.classList.toggle("is-deselected", !selected);
+  peakEditor.states.get(decodeURIComponent(row.dataset.track))?.transient.draw();
   row.querySelectorAll(".peak-flag, .peak-panel input, .peak-panel button").forEach((control) => { control.disabled = !selected; });
   row.querySelectorAll(".track-trim-start, .track-trim-end, .track-trim-start-range, .track-trim-end-range").forEach((input) => {
     input.disabled = !selected || !individualTrimEnabled;
@@ -399,7 +402,8 @@ function stopTrackPreview(row, reset = false, resetPosition = null) {
   setPreviewButton(row, false);
 }
 
-function startTrackPreview(row) {
+function startTrackPreview(row, audition = false) {
+  if (!audition && !peakEditor.transientReady(row)) { alert(t("transientStale")); return; }
   const audio = row.querySelector(".track-preview-audio");
   if (!audio) return;
   delete audio.dataset.auditionEnd;
@@ -474,6 +478,7 @@ function resetAllPlayheads() {
 }
 
 function startAllTrackPreviews() {
+  if (!peakEditor.transientReady()) { alert(t("transientStale")); return; }
   const rows = previewRows();
   if (!rows.length) return;
   const shared = $("#linked-playheads").checked;
@@ -639,12 +644,14 @@ function pollWaveforms(job, epoch) {
 $("#convert-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   if (peakEditor.busy) { alert(t("peakBusy")); return; }
+  if (!peakEditor.transientReady()) { alert(t("transientStale")); return; }
   for (const state of peakEditor.states.values()) peakEditor.close(state);
   $("#convert-button").disabled = true;
   const form = new FormData(event.currentTarget);
   const payload = Object.fromEntries(form);
   payload.language = currentLanguage();
   payload.peakEdits = peakEditor.payload();
+  payload.transientControls = peakEditor.transientPayload();
   payload.selectionMask = previousSelection;
   payload.enforceSafety = $("#enforce-safety").checked;
   payload.applyPreviewGain = $("#apply-preview-gain").checked;

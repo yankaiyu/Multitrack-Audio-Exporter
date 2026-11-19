@@ -16,6 +16,7 @@ To add a UI language, add a complete `web/locales/<code>.json` file; the app dis
 - <strong>Flexible levels:</strong> normalize tracks, preserve relative levels, or skip normalization; separately choose whether to apply preview gains and enforce the safety ceiling.
 - <strong>Stereo splitting:</strong> optionally split stereo files into independent left/right mono tracks for separate preview, trimming, and export.
 - <strong>Peak repair:</strong> review suspected isolated peaks, compare original/edited audio, and apply reversible local attenuation before normalization. Original files stay unchanged.
+- <strong>Transient control:</strong> optional per-track limiting with drive gain and before/after audition. Raises the body of dynamic recordings before normalization; unlike the preview limiter, it affects export.
 - <strong>Repeated sessions:</strong> reuse track selections by list order when the next folder has the same track count.
 - <strong>Automatic selection:</strong> optionally select only audible tracks when waveforms load, using the empty-track threshold; the preference is remembered.
 - <strong>Easy sharing:</strong> optional ZIP package and a local-only workflow.
@@ -88,6 +89,7 @@ See [CHANGELOG.md](CHANGELOG.md) for detailed behavior and release notes.
 - <strong>灵活音量：</strong> 可逐轨标准化、保持相对响度或跳过标准化，并分别选择是否应用试听增益及是否进行最终安全峰值复检。
 - <strong>立体声拆分：</strong> 可将立体声文件拆为独立的左右单声道轨道，分别预览、裁剪和导出。
 - <strong>异常峰值处理：</strong> 检测疑似孤立峰值，对比试听后局部降幅，再标准化；支持撤销，原文件不变。
+- <strong>瞬态控制：</strong> 可选的逐轨限幅、驱动增益及处理前后试听，在标准化前提高动态录音的主体音量；与试听限幅器不同，此功能会影响导出。
 - <strong>连续处理：</strong> 下一文件夹的轨道数量相同时，按列表顺序复用勾选。
 - <strong>自动筛选：</strong> 可在加载波形后按底噪阈值自动只选有声轨道，并记住开关状态。
 - <strong>方便分享：</strong> 可选 ZIP 分享包，全部本机处理。

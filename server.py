@@ -23,6 +23,7 @@ from urllib.parse import urlparse
 from audio_tools import (AUDIO_CONTENT_TYPES, INPUT_EXTENSIONS, MAC_BIN_DIRS, OUTPUT_FORMATS,
                          WAV_CODECS, parallel_map, peak_of_audio, peak_of_mp3, tool_path)
 from peak_processing import detect_peaks, envelope_filter, validate_edits
+from transient_processing import validate_transient, limit_audio
 
 ROOT = Path(__file__).resolve().parent
 WEB_ROOT = ROOT / "web"
@@ -197,7 +198,8 @@ def split_stereo_sources(job_id: str, files: list[Path], workspace: Path, enable
 def sanitized_inputs(job_id: str, files: list[Path], workspace: Path,
                      silence_threshold: float, trim_start: float, trim_end: float | None, workers: int,
                      track_trims: dict[str, dict] | None = None,
-                     peak_edits: dict[str, list] | None = None) -> tuple[dict[Path, Path], set[Path]]:
+                     peak_edits: dict[str, list] | None = None,
+                     transient_controls: dict | None = None) -> tuple[dict[Path, Path], set[Path]]:
     """Make finite 32-bit float working WAVs and identify blank input channels.
 
     Some float recorders write NaN/Inf samples in unused channels. Those samples make
@@ -233,6 +235,16 @@ def sanitized_inputs(job_id: str, files: list[Path], workspace: Path,
                    "-c:a", "pcm_f32le", str(cleaned)]
         if run_process(job_id, command) != 0:
             raise RuntimeError(localized(job_language(job_id), "couldNotSanitizeFloat", file=source.name))
+        control = (transient_controls or {}).get(source.name, {})
+        if control.get("enabled"):
+            processed = workspace / f"{uuid.uuid4().hex}.wav"
+            try:
+                render_transient(job_id, cleaned, processed, control)
+            except Exception:
+                if job_cancelled(job_id):
+                    raise JobCancelled() from None
+                raise RuntimeError(localized(job_language(job_id), "transientFailed")) from None
+            cleaned = processed
         return source, cleaned, peak_of_audio(cleaned)
 
     finite: dict[Path, Path] = {}
@@ -407,6 +419,13 @@ def _convert_job(job_id: str, options: dict) -> None:
         trim_end = float(options["trimEnd"]) if options.get("trimEnd") else None
         track_trims = options.get("trackTrims") or {}
         peak_edits = options.get("peakEdits") or {}
+        transient_controls = options.get("transientControls") or {}
+        if not isinstance(transient_controls, dict):
+            raise ValueError(localized(job_language(job_id), "transientInvalid"))
+        try:
+            transient_controls = {name: validate_transient(value) for name, value in transient_controls.items()}
+        except ValueError:
+            raise ValueError(localized(job_language(job_id), "transientInvalid")) from None
         if not isinstance(peak_edits, dict):
             raise ValueError(localized(job_language(job_id), "peakInvalidEdits"))
         try:
@@ -442,7 +461,9 @@ def _convert_job(job_id: str, options: dict) -> None:
             raise ValueError(localized(job_language(job_id), "missingFfmpeg"))
         with tempfile.TemporaryDirectory(prefix="multitrack-audio-export-") as temp:
             set_localized_progress(job_id, 5, "sanitizingAndMeasuring")
-            cleaned, blank = sanitized_inputs(job_id, files, Path(temp), silence_threshold, trim_start, trim_end, workers, track_trims, peak_edits)
+            cleaned, blank = sanitized_inputs(job_id, files, Path(temp), silence_threshold, trim_start, trim_end, workers, track_trims, peak_edits, transient_controls)
+            if any(transient_controls.get(file.name, {}).get("enabled") for file in files):
+                append_localized_log(job_id, "transientExportApplied")
             if any(peak_edits.get(file.name) for file in files):
                 append_localized_log(job_id, "peakEditsApplied")
             set_localized_progress(job_id, 20, "sanitizingComplete")
@@ -603,6 +624,26 @@ def _convert_job(job_id: str, options: dict) -> None:
             JOBS[job_id]["status"] = "error"
 
 
+def render_transient(job_id, source, output, control):
+    control = validate_transient(control)
+    def register(process, active):
+        with JOB_PROCESSES_LOCK:
+            group = JOB_PROCESSES.setdefault(job_id, set())
+            if active:
+                group.add(process)
+            else:
+                group.discard(process)
+        if active and job_cancelled(job_id):
+            process.terminate()
+    if control["enabled"] and control["drive"]:
+        return limit_audio(tool_path("ffmpeg"), tool_path("ffprobe"), source, output,
+                           peak_of_audio(source), control["drive"], register)
+    if run_process(job_id, [tool_path("ffmpeg"), "-v", "error", "-y", "-i", str(source),
+                           "-c:a", "pcm_f32le", str(output)]) != 0:
+        raise ValueError("transientFailed")
+    return {"maxReduction": 0, "limitedPercent": 0}
+
+
 def peak_job(job_id: str, data: dict, render: bool = False) -> None:
     """Analyze registered preview sources, or render confirmed edits asynchronously."""
     language = job_language(job_id)
@@ -639,6 +680,7 @@ def peak_job(job_id: str, data: dict, render: bool = False) -> None:
             duration = float(metadata["format"]["duration"])
             if render:
                 edits = validate_edits(track.get("edits", []), duration)
+                control = validate_transient(track.get("transient", {}))
                 cache = source.parent / ".multitrack-audio-exporter-preview"
                 cache.mkdir(exist_ok=True)
                 token = uuid.uuid4().hex
@@ -647,6 +689,31 @@ def peak_job(job_id: str, data: dict, render: bool = False) -> None:
                                        f"asetpts=PTS-STARTPTS,{envelope_filter(channels, edits)}",
                                        "-c:a", "pcm_f32le", str(audio)]) != 0:
                     raise ValueError("peakAnalysisFailed")
+                stats = None
+                before_audio = None
+                if control["enabled"]:
+                    start, end = float(track.get("start", 0)), float(track.get("end", duration))
+                    if not math.isfinite(start) or not math.isfinite(end) or start < 0 or end <= start or end > duration + .001:
+                        raise ValueError("peakInvalidEdits")
+                    end = min(end, duration)
+                    # Audition exactly the trimmed processing context used by export.
+                    # Pad it back onto the source timeline for accurate playheads.
+                    with tempfile.TemporaryDirectory(prefix="multitrack-transient-") as temp:
+                        before, after = Path(temp) / "before.wav", Path(temp) / "after.wav"
+                        if run_process(job_id, [ffmpeg, "-v", "error", "-y", "-i", str(audio), "-af",
+                                               f"atrim=start={start}:end={end},asetpts=PTS-STARTPTS",
+                                               "-c:a", "pcm_f32le", str(before)]) != 0:
+                            raise ValueError("transientFailed")
+                        stats = render_transient(job_id, before, after, control)
+                        before_token = uuid.uuid4().hex
+                        before_path = cache / f"edit-{before_token}.wav"
+                        for src, dst in ((before, before_path), (after, audio)):
+                            if run_process(job_id, [ffmpeg, "-v", "error", "-y", "-i", str(src), "-af",
+                                                   f"adelay={round(start * rate)}S:all=1,apad=whole_dur={duration},atrim=end={duration}",
+                                                   "-c:a", "pcm_f32le", str(dst)]) != 0:
+                                raise ValueError("transientFailed")
+                        AUDIO_FILES[before_token] = before_path
+                        before_audio = f"/api/audio/{before_token}"
                 split = ":split_channels=1" if channels == 2 else ""
                 if run_process(job_id, [ffmpeg, "-v", "error", "-y", "-i", str(audio), "-filter_complex",
                                        f"showwavespic=s=1400x128:colors=0xD2F26C{split}",
@@ -654,7 +721,8 @@ def peak_job(job_id: str, data: dict, render: bool = False) -> None:
                     raise ValueError("peakAnalysisFailed")
                 AUDIO_FILES[token] = audio
                 WAVEFORM_FILES[token] = image
-                results.append({"name": track["name"], "audio": f"/api/audio/{token}", "image": f"/api/waveform/{token}"})
+                results.append({"name": track["name"], "audio": f"/api/audio/{token}", "image": f"/api/waveform/{token}",
+                                "transientStats": stats, "beforeAudio": before_audio})
             else:
                 start, end = float(track.get("start", 0)), float(track.get("end", duration))
                 if not math.isfinite(start) or not math.isfinite(end) or start < 0 or end <= start or end > duration + .001:
@@ -669,7 +737,8 @@ def peak_job(job_id: str, data: dict, render: bool = False) -> None:
     except Exception as error:
         # Only our stable error keys are translated; do not expose internal paths.
         key = str(error) if isinstance(error, ValueError) and str(error) in {
-            "peakInvalidEdits", "peakAnalysisFailed", "peakSourceMissing", "missingFfmpegProbe"} else "peakAnalysisFailed"
+            "peakInvalidEdits", "peakAnalysisFailed", "peakSourceMissing", "missingFfmpegProbe",
+            "transientInvalid", "transientFailed"} else "peakAnalysisFailed"
         with JOBS_LOCK:
             JOBS[job_id].update(status="cancelled" if JOBS[job_id].get("cancel_requested") else "error", log=localized(language, key))
 
